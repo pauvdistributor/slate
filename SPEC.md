@@ -55,6 +55,20 @@ The shared mechanism is `reanchorTo(basket, v)`: set `anchorValue = v` (equal) o
 6. mcap divisor: launch == `baseValue`; composition change scales the divisor by
    `newTotal / oldTotal`; larger names move the index more.
 
+## Investing (money flow)
+
+Both entry points use one shared dollar split `indexAllocationSplit(basket, $)`:
+equal weight ⇒ `$/N` each; market-cap ⇒ pro-rata by `marketCap_i / Σ marketCap`.
+
+| Function | Flow |
+|---|---|
+| `investInIndex(basket, $X)` | $X flows into the constituents by weight (the "money into the equally weighted individuals"). Buys each curve, records a tick. |
+| `investInPerson(basket, person, $X, {primaryPct})` | `primaryPct` (default 0.95) buys the person directly; the rest is routed **through the index** (same split). The person also receives their index slice, so `effectivePrimaryPct = primaryPct + (1−primaryPct)·weight_person`. |
+
+Tested invariants: index investment sums to the amount and (equal weight) is an
+equal dollar slice per member; the single-invest index leg matches the index
+split exactly; market-cap routes more dollars to bigger names.
+
 ## Out of scope (left for the backend dev)
 
 - Persistence beyond localStorage / in-memory (swap in a DB behind the same pure

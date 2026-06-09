@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import IndexChart from "@/components/IndexChart";
 import InfoTooltip from "@/components/InfoTooltip";
 import Nav from "@/components/Nav";
+import FlowBreakdown, { type FlowLeg } from "@/components/FlowBreakdown";
 import {
   indexValue,
   summarize,
@@ -14,6 +15,7 @@ import {
   type ConstituentSnapshot,
   type IndexPoint,
   type InvestResult,
+  type InvestAllocation,
 } from "@/basket/basket-engine";
 import { type SimState } from "@/basket/simulation";
 import {
@@ -84,25 +86,27 @@ export default function SinglePage() {
   const amt = parseFloat(amount) || 0;
   const primaryPct = Math.min(100, Math.max(0, parseFloat(primary) || 0)) / 100;
 
-  // Default the selected person to LeBron if present, else the first member.
   const members = useMemo(() => view?.rows ?? [], [view]);
+  const n = members.length;
   const selected =
     person && members.some((m) => m.id === person)
       ? person
       : members.find((m) => m.id === "lebron")?.id ?? members[0]?.id ?? "";
 
-  const n = members.length;
-
-  // Pure preview from the rendered rows (same arithmetic as
-  // basket-engine.previewInvestment, but without touching the ref in render).
-  const preview = useMemo(() => {
+  // Live preview: 95% direct to person, 5% equal-weight across all members.
+  const previewAllocs: InvestAllocation[] = useMemo(() => {
     if (!selected || amt <= 0 || n === 0) return [];
     const primaryAmt = amt * primaryPct;
-    const perMember = (amt * (1 - primaryPct)) / n;
+    const perMember = (amt * (1 - primaryPct)) / n; // equal-weight index leg
     return members.map((m) => {
       const isPrimary = m.id === selected;
-      const a = perMember + (isPrimary ? primaryAmt : 0);
-      return { id: m.id, name: m.name, amount: a, pct: a / amt, isPrimary };
+      const indexAmount = perMember;
+      const primaryAmount = isPrimary ? primaryAmt : 0;
+      const a = indexAmount + primaryAmount;
+      return {
+        id: m.id, name: m.name, amount: a, primaryAmount, indexAmount,
+        pct: a / amt, isPrimary, tokens: 0, priceBefore: m.price, priceAfter: m.price,
+      };
     });
   }, [selected, amt, primaryPct, n, members]);
 
@@ -125,8 +129,21 @@ export default function SinglePage() {
     );
   }
 
-  const { summary, value, rows, history, weighting } = view;
+  const { summary, value, rows, history } = view;
   const selectedRow = rows.find((r) => r.id === selected);
+  const primaryName = selectedRow?.name ?? "person";
+
+  const previewLegs: FlowLeg[] = [
+    { label: `Direct → ${primaryName}`, amount: amt * primaryPct, tone: "primary" },
+    { label: `Index → all ${n} members`, amount: amt * (1 - primaryPct), tone: "index" },
+  ];
+
+  const resultLegs: FlowLeg[] = lastResult
+    ? [
+        { label: `Direct → ${lastResult.allocations.find((a) => a.isPrimary)?.name ?? "person"}`, amount: lastResult.amount * lastResult.primaryPct, tone: "primary" },
+        { label: `Index → all members`, amount: lastResult.indexAmount, tone: "index" },
+      ]
+    : [];
 
   return (
     <div className="flex flex-col h-screen">
@@ -138,15 +155,15 @@ export default function SinglePage() {
             <div>
               <h1 className="text-xl font-bold text-zinc-100">Invest in a single person</h1>
               <p className="text-xs text-zinc-500 mt-0.5">
-                {Math.round(primaryPct * 100)}% goes to the person, {Math.round((1 - primaryPct) * 100)}% is split
-                across all {summary.n} {summary.name} members (the person included).
+                {Math.round(primaryPct * 100)}% buys the person directly · {Math.round((1 - primaryPct) * 100)}% goes
+                into the {summary.name} index (spread equally across all {summary.n} members).
               </p>
             </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] uppercase tracking-wide text-zinc-500">Category</span>
               <select
                 value={summary.name}
-                onChange={(e) => reseed(e.target.value, weighting)}
+                onChange={(e) => reseed(e.target.value, view.weighting)}
                 className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-2 py-1 max-w-[160px]"
                 title="Switching category reseeds this tab's simulation"
               >
@@ -184,9 +201,9 @@ export default function SinglePage() {
                   />
                 </div>
                 <div className="w-24">
-                  <label className="block text-[10px] uppercase tracking-wide text-zinc-500 mb-1 flex items-center">
-                    Primary %
-                    <InfoTooltip text="Share routed straight to the chosen person. The remainder is split evenly across all category members (including the person), so their effective share is a bit higher." />
+                  <label className="text-[10px] uppercase tracking-wide text-zinc-500 mb-1 flex items-center">
+                    Direct %
+                    <InfoTooltip text="Share that buys the chosen person directly. The remainder goes into the index, which spreads it equally across all members (including the person), so their effective share is a bit higher." />
                   </label>
                   <input
                     value={primary}
@@ -198,8 +215,9 @@ export default function SinglePage() {
               </div>
 
               <div className="text-[11px] text-zinc-400 mb-3 space-y-0.5">
-                <div>Effective share to {selectedRow?.name ?? "person"}: <span className="text-zinc-200 font-medium">{(effectivePrimary * 100).toFixed(2)}%</span></div>
-                <div>Each member&apos;s even slice: <span className="text-zinc-200">{fmtUSD((amt * (1 - primaryPct)) / Math.max(1, n))}</span></div>
+                <div>Direct to {primaryName}: <span className="text-emerald-300">{fmtUSD(amt * primaryPct)}</span></div>
+                <div>Into the index: <span className="text-sky-300">{fmtUSD(amt * (1 - primaryPct))}</span> → {fmtUSD((amt * (1 - primaryPct)) / Math.max(1, n))} each</div>
+                <div>Effective share to {primaryName}: <span className="text-zinc-200 font-medium">{(effectivePrimary * 100).toFixed(2)}%</span></div>
               </div>
 
               <button
@@ -211,54 +229,33 @@ export default function SinglePage() {
               </button>
             </div>
 
-            {/* Allocation preview */}
-            <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4">
-              <h2 className="text-sm font-semibold text-zinc-200 mb-3">Allocation preview</h2>
-              {preview.length === 0 ? (
-                <p className="text-xs text-zinc-500">Enter an amount to see the split.</p>
-              ) : (
-                <div className="max-h-72 overflow-y-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-[10px] uppercase tracking-wide text-zinc-500">
-                        <th className="text-left font-medium py-1">Member</th>
-                        <th className="text-right font-medium py-1">Amount</th>
-                        <th className="text-right font-medium py-1">Share</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview
-                        .slice()
-                        .sort((a, b) => b.amount - a.amount)
-                        .map((r) => (
-                          <tr key={r.id} className={r.isPrimary ? "text-emerald-300" : "text-zinc-300"}>
-                            <td className="py-1">{r.name}{r.isPrimary ? " ★" : ""}</td>
-                            <td className="py-1 text-right tabular-nums">{fmtUSD(r.amount)}</td>
-                            <td className="py-1 text-right tabular-nums">{(r.pct * 100).toFixed(2)}%</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            {/* Live flow preview */}
+            <FlowBreakdown
+              total={amt}
+              legs={previewLegs}
+              allocations={previewAllocs}
+              title="Money flow (preview)"
+            />
           </div>
 
-          {/* Result */}
+          {/* Executed result */}
           {lastResult && (
-            <div className="rounded-lg border border-emerald-700/50 bg-emerald-950/20 p-4 mt-4">
-              <h2 className="text-sm font-semibold text-emerald-300 mb-2">
-                Invested {fmtUSD(lastResult.amount)} — primary {lastResult.allocations.find((a) => a.isPrimary)?.name}
-              </h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs rounded-lg border border-emerald-700/50 bg-emerald-950/20 p-3">
                 <Stat label="Index before" value={lastResult.indexBefore.toFixed(2)} />
                 <Stat label="Index after" value={lastResult.indexAfter.toFixed(2)} accent />
                 <Stat
                   label={`${lastResult.allocations.find((a) => a.isPrimary)?.name} price`}
                   value={`${fmtUSD(lastResult.allocations.find((a) => a.isPrimary)!.priceBefore)} → ${fmtUSD(lastResult.allocations.find((a) => a.isPrimary)!.priceAfter)}`}
                 />
-                <Stat label="Effective primary %" value={`${(lastResult.effectivePrimaryPct * 100).toFixed(2)}%`} />
+                <Stat label="Effective direct %" value={`${(lastResult.effectivePrimaryPct * 100).toFixed(2)}%`} />
               </div>
+              <FlowBreakdown
+                total={lastResult.amount}
+                legs={resultLegs}
+                allocations={lastResult.allocations}
+                title="Money flow (executed)"
+              />
             </div>
           )}
 

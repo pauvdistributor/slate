@@ -17,6 +17,7 @@ import {
   snapshotConstituents,
   previewInvestment,
   investInPerson,
+  investInIndex,
   constituentPrice,
   getConstituent,
   type Basket,
@@ -256,11 +257,53 @@ describe("single-person investing (95/5 split)", () => {
     expect(res.indexAfter).toBeCloseTo(indexValue(b), 9);
   });
 
+  it("the 5% routes through the index: each member's index slice is equal (incl. primary)", () => {
+    const b = createBasket({ name: "Idx5", baseValue: 1000, constituents: fivePeople() });
+    const res = investInPerson(b, "A", 10_000, { primaryPct: 0.95 });
+    const indexSlices = res.allocations.map((a) => a.indexAmount);
+    // every member (A included) gets the same index slice = 5%*10000/5 = 100
+    for (const s of indexSlices) expect(s).toBeCloseTo(100, 6);
+    const primary = res.allocations.find((a) => a.isPrimary)!;
+    expect(primary.primaryAmount).toBeCloseTo(9_500, 6); // direct 95%
+    expect(primary.amount).toBeCloseTo(9_600, 6);         // direct + index slice
+    expect(res.indexAmount).toBeCloseTo(500, 6);
+  });
+
   it("100% primary (primaryPct=1) buys only the chosen person", () => {
     const b = createBasket({ name: "Inv3", constituents: fivePeople() });
     investInPerson(b, "C", 5_000, { primaryPct: 1 });
     expect(constituentPrice(getConstituent(b, "C")!)).toBeGreaterThan(1);
     expect(constituentPrice(getConstituent(b, "A")!)).toBeCloseTo(1, 9); // untouched
+  });
+});
+
+describe("investing in the index (money flow to constituents)", () => {
+  it("equal weight: $X flows in equal dollar slices to every member", () => {
+    const b = createBasket({ name: "II", baseValue: 1000, constituents: fivePeople() });
+    const before = indexValue(b);
+    const res = investInIndex(b, 5_000);
+    for (const a of res.allocations) expect(a.amount).toBeCloseTo(1_000, 6); // 5000/5
+    expect(res.allocations.reduce((s, a) => s + a.amount, 0)).toBeCloseTo(5_000, 4);
+    // everyone rose by the same return → index up, weights stay equal
+    expect(res.indexAfter).toBeGreaterThan(before);
+    const weights = snapshotConstituents(b).map((w) => w.weight);
+    for (const w of weights) expect(w).toBeCloseTo(1 / 5, 4);
+  });
+
+  it("market-cap weight: bigger names receive proportionally more", () => {
+    const mk = (usd: number) => buy(defaultState(), CFG, "seed", usd).state;
+    const b = createBasket({
+      name: "IIm", weighting: "mcap", baseValue: 1000,
+      constituents: [
+        { id: "A", name: "A", market: mk(100_000), config: { ...CFG } },
+        { id: "B", name: "B", market: mk(10_000), config: { ...CFG } },
+      ],
+    });
+    const res = investInIndex(b, 1_000);
+    const a = res.allocations.find((x) => x.id === "A")!;
+    const bb = res.allocations.find((x) => x.id === "B")!;
+    expect(a.amount).toBeGreaterThan(bb.amount); // pro-rata by market cap
+    expect(a.amount + bb.amount).toBeCloseTo(1_000, 4);
   });
 });
 

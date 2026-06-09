@@ -6,6 +6,7 @@ import ConstituentsTable from "@/components/ConstituentsTable";
 import BasketSimSidebar from "@/components/BasketSimSidebar";
 import InfoTooltip from "@/components/InfoTooltip";
 import Nav from "@/components/Nav";
+import FlowBreakdown from "@/components/FlowBreakdown";
 import {
   indexValue,
   summarize,
@@ -13,10 +14,13 @@ import {
   rebalance,
   addConstituent,
   removeConstituent,
+  investInIndex,
   type WeightingMode,
   type BasketSummary,
   type ConstituentSnapshot,
   type IndexPoint,
+  type InvestAllocation,
+  type IndexInvestResult,
 } from "@/basket/basket-engine";
 import {
   botTick,
@@ -35,6 +39,22 @@ import {
   findPerson,
   constituentFromPerson,
 } from "@/basket/basket-store";
+
+function fmtUSD(n: number, d = 2): string {
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function fmtUSDi(total: number, n: number): string {
+  return fmtUSD(n > 0 ? total / n : 0);
+}
+
+function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className={`font-semibold tabular-nums ${accent ? "text-emerald-300" : "text-zinc-200"}`}>{value}</div>
+    </div>
+  );
+}
 
 interface View {
   summary: BasketSummary;
@@ -63,6 +83,8 @@ export default function BasketPage() {
   const [view, setView] = useState<View | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [addId, setAddId] = useState("");
+  const [investAmt, setInvestAmt] = useState("1000");
+  const [lastInvest, setLastInvest] = useState<IndexInvestResult | null>(null);
 
   const categories = useMemo(() => listCategories(), []);
 
@@ -106,6 +128,16 @@ export default function BasketPage() {
     refresh();
   }, [refresh]);
 
+  const doInvestIndex = useCallback(() => {
+    const sim = simRef.current;
+    if (!sim) return;
+    const a = parseFloat(investAmt) || 0;
+    if (a <= 0) return;
+    const res = investInIndex(sim.basket, a);
+    setLastInvest(res);
+    refresh();
+  }, [investAmt, refresh]);
+
   const doAdd = useCallback(() => {
     if (!simRef.current || !addId) return;
     const person = findPerson(addId);
@@ -134,6 +166,24 @@ export default function BasketPage() {
     closeAllPositions(simRef.current);
     refresh();
   }, [refresh]);
+
+  // Live preview of how an index investment fans out to the constituents.
+  const indexPreview: InvestAllocation[] = useMemo(() => {
+    const rows = view?.rows ?? [];
+    const w = view?.weighting ?? "equal";
+    const a = parseFloat(investAmt) || 0;
+    if (rows.length === 0 || a <= 0) return [];
+    const tot = rows.reduce((s, r) => s + r.marketCap, 0);
+    return rows.map((r) => {
+      const slice = w === "mcap"
+        ? (tot > 0 ? a * (r.marketCap / tot) : a / rows.length)
+        : a / rows.length;
+      return {
+        id: r.id, name: r.name, amount: slice, primaryAmount: 0, indexAmount: slice,
+        pct: slice / a, isPrimary: false, tokens: 0, priceBefore: r.price, priceAfter: r.price,
+      };
+    });
+  }, [view, investAmt]);
 
   if (!view) {
     return (
@@ -241,6 +291,58 @@ export default function BasketPage() {
                   Rebalance{summary.rebalanceDue ? " (due)" : ""}
                 </button>
               </div>
+            </div>
+
+            {/* Invest in the index */}
+            <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4 mb-4">
+              <div className="flex items-start justify-between mb-3 gap-2 flex-wrap">
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-200 flex items-center">
+                    Invest in the index
+                    <InfoTooltip text="Buying the index sends money into the constituents by weight. Equal weight = equal dollars ($X/N each); market-cap = pro-rata by market cap. The index value moves with the resulting prices." />
+                  </h2>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    {weighting === "equal"
+                      ? `Equal weight — ${fmtUSDi(parseFloat(investAmt) || 0, summary.n)} into each of the ${summary.n} members`
+                      : "Market-cap — pro-rata by each member's market cap"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-500 text-sm">$</span>
+                  <input
+                    value={investAmt}
+                    onChange={(e) => setInvestAmt(e.target.value)}
+                    inputMode="decimal"
+                    className="w-28 rounded border border-zinc-700 bg-zinc-900 text-sm text-zinc-200 px-2 py-1.5"
+                  />
+                  <button onClick={doInvestIndex} className="rounded-md bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white">
+                    Invest
+                  </button>
+                </div>
+              </div>
+
+              <FlowBreakdown
+                total={parseFloat(investAmt) || 0}
+                legs={[{ label: `Index → all ${summary.n} members (${weighting === "equal" ? "equal" : "by market cap"})`, amount: parseFloat(investAmt) || 0, tone: "index" }]}
+                allocations={indexPreview}
+                title="Money flow (preview)"
+              />
+
+              {lastInvest && (
+                <div className="mt-3 space-y-3">
+                  <div className="grid grid-cols-3 gap-3 text-xs rounded-lg border border-emerald-700/50 bg-emerald-950/20 p-3">
+                    <Stat label="Index before" value={lastInvest.indexBefore.toFixed(2)} />
+                    <Stat label="Index after" value={lastInvest.indexAfter.toFixed(2)} accent />
+                    <Stat label="Invested" value={fmtUSD(lastInvest.amount)} />
+                  </div>
+                  <FlowBreakdown
+                    total={lastInvest.amount}
+                    legs={[{ label: "Index → all members", amount: lastInvest.amount, tone: "index" }]}
+                    allocations={lastInvest.allocations}
+                    title="Money flow (executed)"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Chart */}

@@ -407,21 +407,30 @@ export function removeConstituent(basket: Basket, id: string): Basket {
 }
 
 // ------------------------------------------------------------
-// Single-person investing (95 / 5 split)
+// Investing — money flow into the constituents
 // ------------------------------------------------------------
-// Investing $X "in LeBron" doesn't only buy LeBron — it spreads a small
-// slice across his whole category so the index lifts with him. With the
-// default 95/5 split:
-//   - 95% of $X buys the chosen person's curve.
-//   - the remaining 5% is split EQUALLY across ALL N members of the basket,
-//     the chosen person included.
-// Net effect: the chosen person receives 95% + 5%/N (a little over 95%),
-// every other member receives 5%/N.
+// Two entry points, both built on the SAME index-allocation split so the
+// money flow is consistent:
+//
+//   investInIndex(basket, $X)            — buy "the index": $X flows into the
+//       constituents by weight (equal weight ⇒ $X/N each; market-cap ⇒ pro-rata
+//       by market cap). This is the canonical "money into the equally weighted
+//       individuals" flow shown on the Index tab.
+//
+//   investInPerson(basket, person, $X)   — 95% buys the person directly; the
+//       remaining 5% is routed THROUGH the index (investInIndex), so it spreads
+//       across the members by weight. The person also gets their index slice,
+//       so their effective share is 95% + (5% × theirWeight).
 
 export interface InvestAllocation {
   id: string;
   name: string;
+  /** Total dollars sent to this constituent's curve. */
   amount: number;
+  /** Dollars from the direct/primary leg (single-person invest only). */
+  primaryAmount: number;
+  /** Dollars from the index leg. */
+  indexAmount: number;
   /** Share of the total invested amount (0..1). */
   pct: number;
   isPrimary: boolean;
@@ -430,44 +439,104 @@ export interface InvestAllocation {
   priceAfter: number;
 }
 
-export interface InvestResult {
+/**
+ * Dollar split of `amount` across constituents by index weight:
+ *  - equal weight ⇒ amount/N each
+ *  - market-cap   ⇒ amount × marketCap_i / Σ marketCap   (pro-rata)
+ */
+function indexAllocationSplit(basket: Basket, amount: number): Map<string, number> {
+  const cons = basket.constituents;
+  const out = new Map<string, number>();
+  if (cons.length === 0 || !(amount > 0)) {
+    for (const c of cons) out.set(c.id, 0);
+    return out;
+  }
+  if (basket.weighting === "mcap") {
+    const tot = totalMarketCap(cons);
+    for (const c of cons) {
+      out.set(c.id, tot > 0 ? amount * (constituentMarketCap(c) / tot) : amount / cons.length);
+    }
+  } else {
+    const per = amount / cons.length;
+    for (const c of cons) out.set(c.id, per);
+  }
+  return out;
+}
+
+export interface IndexInvestResult {
   basket: Basket;
-  personId: string;
   amount: number;
-  /** Fraction routed to the primary before the even split (e.g. 0.95). */
-  primaryPct: number;
-  /** Effective fraction the primary actually received (= primaryPct + (1−primaryPct)/N). */
-  effectivePrimaryPct: number;
   allocations: InvestAllocation[];
   indexBefore: number;
   indexAfter: number;
 }
 
 /**
- * Preview the per-constituent dollar allocation for investing `amount` in
- * `personId` with the given primary split, without executing anything.
+ * Invest `amount` into the index as a whole. The money flows into the
+ * constituents by weight and the index value moves with the resulting prices.
+ * Mutates the basket's constituent markets in place.
+ */
+export function investInIndex(
+  basket: Basket,
+  amount: number,
+  opts?: { investorId?: string },
+): IndexInvestResult {
+  const investorId = opts?.investorId ?? "index-investor";
+  if (basket.constituents.length === 0) throw new Error("basket has no constituents");
+  if (!(amount > 0)) throw new Error("amount must be positive");
+
+  const indexBefore = indexValue(basket);
+  const split = indexAllocationSplit(basket, amount);
+  const allocations = executeAllocations(basket, split, new Map(), investorId, amount);
+  const indexAfter = recordTick(basket);
+
+  return { basket, amount, allocations, indexBefore, indexAfter };
+}
+
+export interface InvestResult {
+  basket: Basket;
+  personId: string;
+  amount: number;
+  /** Fraction routed directly to the primary (e.g. 0.95). */
+  primaryPct: number;
+  /** Effective fraction the primary actually received (direct + its index slice). */
+  effectivePrimaryPct: number;
+  /** Dollars sent through the index leg (the "5%"). */
+  indexAmount: number;
+  allocations: InvestAllocation[];
+  indexBefore: number;
+  indexAfter: number;
+}
+
+/**
+ * Preview the per-constituent dollar allocation for a single-person invest,
+ * without executing anything. Returns the direct, index, and total legs.
  */
 export function previewInvestment(
   basket: Basket,
   personId: string,
   amount: number,
   primaryPct = 0.95,
-): { id: string; name: string; amount: number; pct: number; isPrimary: boolean }[] {
+): InvestAllocation[] {
   const n = basket.constituents.length;
   if (n === 0 || !(amount > 0)) return [];
   const primaryAmt = amount * primaryPct;
-  const perMember = (amount * (1 - primaryPct)) / n; // split across ALL members
+  const indexSplit = indexAllocationSplit(basket, amount * (1 - primaryPct));
   return basket.constituents.map((c) => {
     const isPrimary = c.id === personId;
-    const a = perMember + (isPrimary ? primaryAmt : 0);
-    return { id: c.id, name: c.name, amount: a, pct: a / amount, isPrimary };
+    const indexAmount = indexSplit.get(c.id) ?? 0;
+    const primaryAmount = isPrimary ? primaryAmt : 0;
+    const a = indexAmount + primaryAmount;
+    return {
+      id: c.id, name: c.name, amount: a, primaryAmount, indexAmount,
+      pct: a / amount, isPrimary, tokens: 0, priceBefore: constituentPrice(c), priceAfter: constituentPrice(c),
+    };
   });
 }
 
 /**
- * Execute a single-person investment: buy each member's bonding curve by its
- * allocated amount, then record the resulting index value. Mutates the basket's
- * constituent markets in place.
+ * Execute a single-person investment: 95% buys the person directly, 5% flows
+ * through the index. Mutates the basket's constituent markets in place.
  */
 export function investInPerson(
   basket: Basket,
@@ -477,19 +546,52 @@ export function investInPerson(
 ): InvestResult {
   const primaryPct = opts?.primaryPct ?? 0.95;
   const investorId = opts?.investorId ?? "investor";
-  const n = basket.constituents.length;
-  if (n === 0) throw new Error("basket has no constituents");
+  if (basket.constituents.length === 0) throw new Error("basket has no constituents");
   if (!getConstituent(basket, personId)) throw new Error(`person ${personId} not in basket`);
   if (!(amount > 0)) throw new Error("amount must be positive");
 
   const indexBefore = indexValue(basket);
   const primaryAmt = amount * primaryPct;
-  const perMember = (amount * (1 - primaryPct)) / n;
+  const indexAmt = amount * (1 - primaryPct);
 
+  // The 5% goes "into the index": split by weight across all members.
+  const indexSplit = indexAllocationSplit(basket, indexAmt);
+  const primaryMap = new Map<string, number>([[personId, primaryAmt]]);
+  const allocations = executeAllocations(basket, indexSplit, primaryMap, investorId, amount);
+
+  const indexAfter = recordTick(basket);
+  const personIndexSlice = indexSplit.get(personId) ?? 0;
+
+  return {
+    basket,
+    personId,
+    amount,
+    primaryPct,
+    effectivePrimaryPct: (primaryAmt + personIndexSlice) / amount,
+    indexAmount: indexAmt,
+    allocations,
+    indexBefore,
+    indexAfter,
+  };
+}
+
+/**
+ * Shared executor: for each constituent buy (indexLeg + primaryLeg) dollars on
+ * its curve and return the allocation rows. `primaryMap` is empty for a pure
+ * index investment.
+ */
+function executeAllocations(
+  basket: Basket,
+  indexSplit: Map<string, number>,
+  primaryMap: Map<string, number>,
+  investorId: string,
+  total: number,
+): InvestAllocation[] {
   const allocations: InvestAllocation[] = [];
   for (const c of basket.constituents) {
-    const isPrimary = c.id === personId;
-    const a = perMember + (isPrimary ? primaryAmt : 0);
+    const indexAmount = indexSplit.get(c.id) ?? 0;
+    const primaryAmount = primaryMap.get(c.id) ?? 0;
+    const a = indexAmount + primaryAmount;
     const priceBefore = constituentPrice(c);
     let tokens = 0;
     let priceAfter = priceBefore;
@@ -500,23 +602,11 @@ export function investInPerson(
       priceAfter = res.newPrice;
     }
     allocations.push({
-      id: c.id, name: c.name, amount: a, pct: a / amount,
-      isPrimary, tokens, priceBefore, priceAfter,
+      id: c.id, name: c.name, amount: a, primaryAmount, indexAmount,
+      pct: total > 0 ? a / total : 0, isPrimary: primaryAmount > 0, tokens, priceBefore, priceAfter,
     });
   }
-
-  const indexAfter = recordTick(basket);
-
-  return {
-    basket,
-    personId,
-    amount,
-    primaryPct,
-    effectivePrimaryPct: primaryPct + (1 - primaryPct) / n,
-    allocations,
-    indexBefore,
-    indexAfter,
-  };
+  return allocations;
 }
 
 // ------------------------------------------------------------

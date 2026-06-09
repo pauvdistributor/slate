@@ -19,9 +19,13 @@ in `doc/index-implementation.md`.
    "Basketball" = the NBA-All-Stars analog). Equal-weight index over every member,
    with rebalancing and add/remove.
 2. **Single** (`/single`) — invest in **one person** (e.g. LeBron) with a **95/5
-   split**: 95% buys that person's curve, the remaining 5% is split evenly across
-   *all* category members (the person included), so the person's effective share
-   is a little over 95% (`95% + 5%/N`) and the whole index lifts with them.
+   split**: 95% buys that person's curve directly, the remaining **5% goes into
+   the index** (`investInIndex`), which fans it out across the members by weight.
+   The person also gets their index slice, so their effective share is a little
+   over 95% and the whole index lifts with them.
+
+Both tabs visualize the **money flow** — a stacked routing bar (direct vs index)
+plus a per-constituent breakdown of dollars in and the resulting price move.
 
 Each tab is its **own independent simulation** (separate localStorage state), so
 you can run an index experiment and a single-person experiment side by side
