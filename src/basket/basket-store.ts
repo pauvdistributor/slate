@@ -3,9 +3,11 @@
 // ------------------------------------------------------------
 // Browser persistence for the simulation, mirroring DTM4.1's
 // localStorage approach. The engine modules are pure; this file
-// is the only place that touches localStorage. The whole
-// SimState (basket + per-constituent markets + bot cash) is one
-// JSON blob — fine for a single-user simulation.
+// is the only place that touches localStorage.
+//
+// Constituents are seeded from the REAL Pauv roster snapshot in
+// src/data/roster.json (people grouped by category, with their
+// current prices). Re-pull it with `npm run refresh-roster`.
 //
 // For a real backend, swap this out for the same pure engine
 // calls against a database. See src/app/api/* for a server-side
@@ -17,53 +19,104 @@ import {
   defaultConfig,
   buy,
   type PauvConfig,
+  type PauvState,
 } from "@/market/pauv-engine";
-import {
-  createBasket,
-  type WeightingMode,
-} from "./basket-engine";
-import {
-  createSim,
-  type SimState,
-} from "./simulation";
+import { createBasket, type WeightingMode } from "./basket-engine";
+import { createSim, type SimState } from "./simulation";
+import rosterJson from "@/data/roster.json";
 
-const STORE_KEY = "basket_sim_state_v1";
+const STORE_KEY = "basket_sim_state_v2";
 
-// ---- Demo roster (themed group, PDF Part 8) ----
-const DEMO_PEOPLE = [
-  "Ada", "Bao", "Cira", "Diego", "Esme",
-] as const;
+export interface RosterPerson {
+  id: string;
+  ticker: string;
+  name: string;
+  category: string;
+  priceUsd: number;
+  p0Usd: number | null;
+  holders: number;
+  volumeUsd: number;
+  frozen: boolean;
+  photoUrl: string | null;
+  industry: string | null;
+}
+interface Roster {
+  fetchedAt: string;
+  source: string;
+  categories: Array<{ name: string; count: number }>;
+  people: RosterPerson[];
+}
 
-const SEED_CFG: PauvConfig = defaultConfig({
-  P0: 1,
-  b: 0.001,
-  alpha: 100,
-  feeRate: 0,
-});
+const roster = rosterJson as Roster;
+
+/** Category to seed by default — Pauv's "Basketball" is the NBA-All-Stars analog. */
+export const DEFAULT_CATEGORY =
+  roster.categories.find((c) => c.name === "Basketball")?.name ??
+  roster.categories[0]?.name ??
+  "Basketball";
+
+export function listCategories(): Array<{ name: string; count: number }> {
+  return roster.categories;
+}
+
+export function peopleInCategory(category: string): RosterPerson[] {
+  return roster.people.filter((p) => p.category === category);
+}
+
+export function allPeople(): RosterPerson[] {
+  return roster.people;
+}
+
+export function findPerson(id: string): RosterPerson | undefined {
+  return roster.people.find((p) => p.id === id || p.ticker === id);
+}
+
+// A per-person curve whose spot price (at Q=0) is the person's real price.
+function configForPerson(p: RosterPerson): PauvConfig {
+  return defaultConfig({
+    P0: Math.max(p.priceUsd, 0.01),
+    b: 0.001,
+    alpha: 100,
+    feeRate: 0,
+  });
+}
 
 /**
- * Build a fresh simulation: 5 themed constituents, each seeded with a small
- * initial buy so prices and supply are non-zero (needed for market-cap mode).
+ * Build one constituent from a roster person.
+ *  - equal weight (default): market starts at Q=0 so price == real price.
+ *  - mcap: seed a buy proportional to holders+1 so bigger names carry more
+ *    market cap (supply differs). Launch baseline still normalizes returns.
  */
-export function seedSim(opts?: {
-  name?: string;
+export function constituentFromPerson(p: RosterPerson, weighting: WeightingMode) {
+  const config = configForPerson(p);
+  let market: PauvState = defaultState();
+  if (weighting === "mcap") {
+    const seedUsd = 500 + (p.holders ?? 0) * 250 + (p.volumeUsd ?? 0);
+    if (seedUsd > 0) market = buy(market, config, "seed", seedUsd).state;
+  }
+  return { id: p.ticker, name: p.name, market, config };
+}
+
+export interface SeedOptions {
+  category?: string;
   weighting?: WeightingMode;
   baseValue?: number;
   rebalanceIntervalMs?: number;
-}): SimState {
-  const constituents = DEMO_PEOPLE.map((name, i) => {
-    // Stagger the seed buys so they don't all launch at exactly the same price.
-    const seedUsd = 2_000 + i * 1_500;
-    const market = buy(defaultState(), SEED_CFG, "seed", seedUsd).state;
-    return { id: name.toLowerCase(), name, market, config: { ...SEED_CFG } };
-  });
+}
+
+/** Seed a fresh simulation for one category (the active basket). */
+export function seedSim(opts?: SeedOptions): SimState {
+  const category = opts?.category ?? DEFAULT_CATEGORY;
+  const weighting = opts?.weighting ?? "equal";
+  let members = peopleInCategory(category);
+  if (members.length === 0) members = peopleInCategory(DEFAULT_CATEGORY);
 
   const basket = createBasket({
-    name: opts?.name ?? "Rising Talent",
-    weighting: opts?.weighting ?? "equal",
+    name: category,
+    weighting,
     baseValue: opts?.baseValue ?? 1000,
     rebalanceIntervalMs: opts?.rebalanceIntervalMs,
-    constituents,
+    constituents: members.map((p) => constituentFromPerson(p, weighting)),
   });
 
   return createSim(basket);

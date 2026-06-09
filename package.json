@@ -10,7 +10,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sim": "tsx scripts/run-sim.ts"
+    "sim": "tsx scripts/run-sim.ts",
+    "refresh-roster": "tsx scripts/refresh-roster.ts"
   },
   "dependencies": {
     "next": "16.2.3",

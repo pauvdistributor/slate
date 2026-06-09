@@ -39,6 +39,7 @@ import {
   defaultConfig,
   defaultState,
   currentPrice as marketPrice,
+  buy,
 } from "@/market/pauv-engine";
 
 export type WeightingMode = "equal" | "mcap";
@@ -403,6 +404,119 @@ export function removeConstituent(basket: Basket, id: string): Basket {
 
   pushPoint(basket, "remove", `removed ${removed.name}`);
   return basket;
+}
+
+// ------------------------------------------------------------
+// Single-person investing (95 / 5 split)
+// ------------------------------------------------------------
+// Investing $X "in LeBron" doesn't only buy LeBron — it spreads a small
+// slice across his whole category so the index lifts with him. With the
+// default 95/5 split:
+//   - 95% of $X buys the chosen person's curve.
+//   - the remaining 5% is split EQUALLY across ALL N members of the basket,
+//     the chosen person included.
+// Net effect: the chosen person receives 95% + 5%/N (a little over 95%),
+// every other member receives 5%/N.
+
+export interface InvestAllocation {
+  id: string;
+  name: string;
+  amount: number;
+  /** Share of the total invested amount (0..1). */
+  pct: number;
+  isPrimary: boolean;
+  tokens: number;
+  priceBefore: number;
+  priceAfter: number;
+}
+
+export interface InvestResult {
+  basket: Basket;
+  personId: string;
+  amount: number;
+  /** Fraction routed to the primary before the even split (e.g. 0.95). */
+  primaryPct: number;
+  /** Effective fraction the primary actually received (= primaryPct + (1−primaryPct)/N). */
+  effectivePrimaryPct: number;
+  allocations: InvestAllocation[];
+  indexBefore: number;
+  indexAfter: number;
+}
+
+/**
+ * Preview the per-constituent dollar allocation for investing `amount` in
+ * `personId` with the given primary split, without executing anything.
+ */
+export function previewInvestment(
+  basket: Basket,
+  personId: string,
+  amount: number,
+  primaryPct = 0.95,
+): { id: string; name: string; amount: number; pct: number; isPrimary: boolean }[] {
+  const n = basket.constituents.length;
+  if (n === 0 || !(amount > 0)) return [];
+  const primaryAmt = amount * primaryPct;
+  const perMember = (amount * (1 - primaryPct)) / n; // split across ALL members
+  return basket.constituents.map((c) => {
+    const isPrimary = c.id === personId;
+    const a = perMember + (isPrimary ? primaryAmt : 0);
+    return { id: c.id, name: c.name, amount: a, pct: a / amount, isPrimary };
+  });
+}
+
+/**
+ * Execute a single-person investment: buy each member's bonding curve by its
+ * allocated amount, then record the resulting index value. Mutates the basket's
+ * constituent markets in place.
+ */
+export function investInPerson(
+  basket: Basket,
+  personId: string,
+  amount: number,
+  opts?: { primaryPct?: number; investorId?: string },
+): InvestResult {
+  const primaryPct = opts?.primaryPct ?? 0.95;
+  const investorId = opts?.investorId ?? "investor";
+  const n = basket.constituents.length;
+  if (n === 0) throw new Error("basket has no constituents");
+  if (!getConstituent(basket, personId)) throw new Error(`person ${personId} not in basket`);
+  if (!(amount > 0)) throw new Error("amount must be positive");
+
+  const indexBefore = indexValue(basket);
+  const primaryAmt = amount * primaryPct;
+  const perMember = (amount * (1 - primaryPct)) / n;
+
+  const allocations: InvestAllocation[] = [];
+  for (const c of basket.constituents) {
+    const isPrimary = c.id === personId;
+    const a = perMember + (isPrimary ? primaryAmt : 0);
+    const priceBefore = constituentPrice(c);
+    let tokens = 0;
+    let priceAfter = priceBefore;
+    if (a > 0) {
+      const res = buy(c.market, c.config, investorId, a);
+      c.market = res.state;
+      tokens = res.tokens;
+      priceAfter = res.newPrice;
+    }
+    allocations.push({
+      id: c.id, name: c.name, amount: a, pct: a / amount,
+      isPrimary, tokens, priceBefore, priceAfter,
+    });
+  }
+
+  const indexAfter = recordTick(basket);
+
+  return {
+    basket,
+    personId,
+    amount,
+    primaryPct,
+    effectivePrimaryPct: primaryPct + (1 - primaryPct) / n,
+    allocations,
+    indexBefore,
+    indexAfter,
+  };
 }
 
 // ------------------------------------------------------------

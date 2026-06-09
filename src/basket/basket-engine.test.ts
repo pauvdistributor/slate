@@ -15,6 +15,10 @@ import {
   constituentReturn,
   recordTick,
   snapshotConstituents,
+  previewInvestment,
+  investInPerson,
+  constituentPrice,
+  getConstituent,
   type Basket,
 } from "./basket-engine";
 
@@ -217,6 +221,46 @@ describe("PDF Parts 4/5 — market-cap weighting & divisor", () => {
     const vBig = indexValue(b2);
     expect(vBig - v0).toBeGreaterThan(vSmall - v0);
     expect(big.market.Q).toBeGreaterThan(small.market.Q);
+  });
+});
+
+describe("single-person investing (95/5 split)", () => {
+  it("preview: primary gets 95% + 5%/N, others get 5%/N, sums to amount", () => {
+    const b = createBasket({ name: "Inv", constituents: fivePeople() });
+    const rows = previewInvestment(b, "A", 1000, 0.95);
+    const a = rows.find((r) => r.id === "A")!;
+    const other = rows.find((r) => r.id === "B")!;
+    expect(a.amount).toBeCloseTo(950 + 50 / 5, 6); // 960
+    expect(other.amount).toBeCloseTo(50 / 5, 6);    // 10
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBeCloseTo(1000, 6);
+    expect(a.isPrimary).toBe(true);
+  });
+
+  it("execute: primary price rises most, everyone rises, index goes up", () => {
+    const b = createBasket({ name: "Inv2", baseValue: 1000, constituents: fivePeople() });
+    const before = indexValue(b);
+    const res = investInPerson(b, "A", 10_000, { primaryPct: 0.95 });
+
+    expect(res.effectivePrimaryPct).toBeCloseTo(0.95 + 0.05 / 5, 9); // 0.96
+    // allocations sum to the invested amount
+    expect(res.allocations.reduce((s, x) => s + x.amount, 0)).toBeCloseTo(10_000, 4);
+
+    const primary = res.allocations.find((x) => x.id === "A")!;
+    const other = res.allocations.find((x) => x.id === "B")!;
+    const primaryGain = primary.priceAfter - primary.priceBefore;
+    const otherGain = other.priceAfter - other.priceBefore;
+    expect(primaryGain).toBeGreaterThan(otherGain);
+    expect(otherGain).toBeGreaterThan(0); // the 5% still lifts everyone
+    expect(res.indexAfter).toBeGreaterThan(before);
+    // index value continues from the trade; matches live computation
+    expect(res.indexAfter).toBeCloseTo(indexValue(b), 9);
+  });
+
+  it("100% primary (primaryPct=1) buys only the chosen person", () => {
+    const b = createBasket({ name: "Inv3", constituents: fivePeople() });
+    investInPerson(b, "C", 5_000, { primaryPct: 1 });
+    expect(constituentPrice(getConstituent(b, "C")!)).toBeGreaterThan(1);
+    expect(constituentPrice(getConstituent(b, "A")!)).toBeCloseTo(1, 9); // untouched
   });
 });
 

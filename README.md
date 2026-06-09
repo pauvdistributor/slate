@@ -13,6 +13,31 @@ in `doc/index-implementation.md`.
 > REST API are two thin layers over the same engine, showing both a client-side
 > (localStorage) and a server-side (in-memory → swap for a DB) integration.
 
+## Two modes (tabs)
+
+1. **Index** (`/basket`) — invest in / track a whole **category** (e.g.
+   "Basketball" = the NBA-All-Stars analog). Equal-weight index over every member,
+   with rebalancing and add/remove.
+2. **Single** (`/single`) — invest in **one person** (e.g. LeBron) with a **95/5
+   split**: 95% buys that person's curve, the remaining 5% is split evenly across
+   *all* category members (the person included), so the person's effective share
+   is a little over 95% (`95% + 5%/N`) and the whole index lifts with them.
+
+Both tabs operate on the **same** underlying per-person markets (shared via
+localStorage), so a single-person investment also moves the category index.
+
+## Real Pauv roster
+
+Constituents are seeded from a snapshot of the **real Pauv roster** in
+[`src/data/roster.json`](src/data/roster.json) — people grouped by category
+(`profiles.info_subcategory`) with their current prices (from `markets`). The
+snapshot is committed so the sim runs offline. Re-pull fresh data with:
+
+```bash
+# creds: the MAIN read-only Supabase anon key (see .env.example)
+npm run refresh-roster
+```
+
 ## How it relates to DTM4.1
 
 | | DTM4.1 | This repo |
@@ -89,6 +114,7 @@ Replace the store's get/put with DB calls and the engine usage is unchanged.
 | `GET /api/basket/:id` | full snapshot: summary + constituents + history |
 | `DELETE /api/basket/:id` | delete a basket |
 | `POST /api/basket/:id/trade` | trade one constituent `{ constituentId, side, action, amount?, positionId? }` → records an index tick |
+| `POST /api/basket/:id/invest` | single-person 95/5 invest `{ personId, amount, primaryPct? }` → records a tick |
 | `POST /api/basket/:id/rebalance` | re-equalize weights |
 | `POST /api/basket/:id/constituent` | add `{ id, name, seedUsd? }` (value-continuous) |
 | `DELETE /api/basket/:id/constituent?cid=` | remove a constituent |
@@ -109,15 +135,18 @@ curl -s -X POST localhost:3000/api/basket/$BID/rebalance
 src/
   market/pauv-engine.ts        # per-constituent softplus curve (pure port of DTM4.1)
   market/pauv-engine.test.ts
-  basket/basket-engine.ts      # the index layer  ← start here
-  basket/basket-engine.test.ts # PDF worked examples
+  basket/basket-engine.ts      # the index layer + 95/5 invest  ← start here
+  basket/basket-engine.test.ts # PDF worked examples + invest tests
   basket/simulation.ts         # bot logic (UI + CLI)
-  basket/basket-store.ts       # browser localStorage + demo seed
+  basket/basket-store.ts       # localStorage + roster-based seeding
+  data/roster.json             # real Pauv roster snapshot (people/categories/prices)
   server/basket-server-store.ts# server in-memory store
-  components/                  # IndexChart, ConstituentsTable, BasketSimSidebar, InfoTooltip
-  app/basket/page.tsx          # the UI
+  components/                  # Nav, IndexChart, ConstituentsTable, BasketSimSidebar, InfoTooltip
+  app/basket/page.tsx          # Index tab
+  app/single/page.tsx          # Single-person (95/5) tab
   app/api/basket/**            # REST surface
 scripts/run-sim.ts             # headless runner
+scripts/refresh-roster.ts      # re-pull the roster snapshot from Supabase
 doc/index-implementation.md    # the source brief (the PDF)
 SPEC.md                        # engine contract + invariants
 ```

@@ -8,12 +8,12 @@ export async function GET() {
   return NextResponse.json(listBaskets().map(summarize));
 }
 
-// POST /api/basket — create a new seeded basket.
-// Body: { name?, weighting?, baseValue?, rebalanceIntervalMs? }
+// POST /api/basket — create a new seeded basket for a category.
+// Body: { category?, weighting?, baseValue?, rebalanceIntervalMs? }
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const sim = createSeeded({
-    name: body.name,
+    category: body.category,
     weighting: body.weighting as WeightingMode | undefined,
     baseValue: body.baseValue,
     rebalanceIntervalMs: body.rebalanceIntervalMs,
