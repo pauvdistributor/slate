@@ -69,23 +69,23 @@ export default function BasketPage() {
   const refresh = useCallback((persist = true) => {
     const sim = simRef.current;
     if (!sim) return;
-    if (persist) saveSim(sim);
+    if (persist) saveSim(sim, "index");
     setView(deriveView(sim));
   }, []);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    const sim = loadOrSeed();
+    const sim = loadOrSeed("index");
     simRef.current = sim;
     setView(deriveView(sim));
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const reseed = useCallback((category: string, weighting: WeightingMode) => {
-    resetSim();
+    resetSim("index");
     const sim = seedSim({ category, weighting });
     simRef.current = sim;
-    saveSim(sim);
+    saveSim(sim, "index");
     setView(deriveView(sim));
   }, []);
 

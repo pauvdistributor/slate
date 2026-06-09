@@ -25,7 +25,13 @@ import { createBasket, type WeightingMode } from "./basket-engine";
 import { createSim, type SimState } from "./simulation";
 import rosterJson from "@/data/roster.json";
 
-const STORE_KEY = "basket_sim_state_v2";
+// Each UI tab keeps its OWN simulation under a separate key, so trades,
+// category, and history on one tab never affect the other.
+export type SimScope = "index" | "single";
+const STORE_KEY_BASE = "basket_sim_state_v2";
+function storeKey(scope: SimScope): string {
+  return `${STORE_KEY_BASE}:${scope}`;
+}
 
 export interface RosterPerson {
   id: string;
@@ -122,10 +128,10 @@ export function seedSim(opts?: SeedOptions): SimState {
   return createSim(basket);
 }
 
-export function loadSim(): SimState | null {
+export function loadSim(scope: SimScope): SimState | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(storeKey(scope));
     if (!raw) return null;
     return JSON.parse(raw) as SimState;
   } catch {
@@ -133,27 +139,27 @@ export function loadSim(): SimState | null {
   }
 }
 
-export function saveSim(sim: SimState): void {
+export function saveSim(sim: SimState, scope: SimScope): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(sim));
+    localStorage.setItem(storeKey(scope), JSON.stringify(sim));
   } catch {
     /* quota / serialization errors are non-fatal for a sim */
   }
 }
 
-export function resetSim(): void {
+export function resetSim(scope: SimScope): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(STORE_KEY);
+  localStorage.removeItem(storeKey(scope));
 }
 
-/** Load existing sim or seed a fresh one and persist it. */
-export function loadOrSeed(): SimState {
-  const existing = loadSim();
+/** Load this tab's existing sim or seed a fresh one and persist it. */
+export function loadOrSeed(scope: SimScope, opts?: SeedOptions): SimState {
+  const existing = loadSim(scope);
   if (existing && existing.basket && existing.basket.constituents.length > 0) {
     return existing;
   }
-  const seeded = seedSim();
-  saveSim(seeded);
+  const seeded = seedSim(opts);
+  saveSim(seeded, scope);
   return seeded;
 }

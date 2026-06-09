@@ -59,23 +59,23 @@ export default function SinglePage() {
   const refresh = useCallback(() => {
     const sim = simRef.current;
     if (!sim) return;
-    saveSim(sim);
+    saveSim(sim, "single");
     setView(deriveView(sim));
   }, []);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    const sim = loadOrSeed();
+    const sim = loadOrSeed("single");
     simRef.current = sim;
     setView(deriveView(sim));
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const reseed = useCallback((category: string, weighting: WeightingMode) => {
-    resetSim();
+    resetSim("single");
     const sim = seedSim({ category, weighting });
     simRef.current = sim;
-    saveSim(sim);
+    saveSim(sim, "single");
     setLastResult(null);
     setPerson("");
     setView(deriveView(sim));
@@ -148,7 +148,7 @@ export default function SinglePage() {
                 value={summary.name}
                 onChange={(e) => reseed(e.target.value, weighting)}
                 className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-2 py-1 max-w-[160px]"
-                title="Switching category reseeds the simulation (shared with the Index tab)"
+                title="Switching category reseeds this tab's simulation"
               >
                 {categories.map((c) => (
                   <option key={c.name} value={c.name}>{c.name} ({c.count})</option>

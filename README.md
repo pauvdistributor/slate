@@ -23,8 +23,9 @@ in `doc/index-implementation.md`.
    *all* category members (the person included), so the person's effective share
    is a little over 95% (`95% + 5%/N`) and the whole index lifts with them.
 
-Both tabs operate on the **same** underlying per-person markets (shared via
-localStorage), so a single-person investment also moves the category index.
+Each tab is its **own independent simulation** (separate localStorage state), so
+you can run an index experiment and a single-person experiment side by side
+without one disturbing the other.
 
 ## Real Pauv roster
 
