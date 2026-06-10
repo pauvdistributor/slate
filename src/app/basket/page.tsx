@@ -77,6 +77,7 @@ interface View {
   memberIds: Set<string>;
   schedule: RebalanceSchedule;
   dateLabel: string;
+  startDateValue: string;
   nextRebalanceLabel: string;
   yourUnits: number;
   yourUnitsValue: number;
@@ -95,6 +96,7 @@ function deriveView(sim: SimState): View {
     memberIds: new Set(b.constituents.map((c) => c.id)),
     schedule: b.schedule,
     dateLabel: simDateLabel(b.clockMs),
+    startDateValue: new Date(b.startMs).toISOString().slice(0, 10),
     nextRebalanceLabel: simDateLabel(nextRebalanceMs(b)),
     yourUnits: b.ledger.holders[YOU] ?? 0,
     yourUnitsValue: holderValue(b, YOU),
@@ -127,13 +129,19 @@ export default function BasketPage() {
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const reseed = useCallback((category: string, weighting: WeightingMode) => {
+  const reseed = useCallback((category: string, weighting: WeightingMode, startMs?: number) => {
     resetSim("index");
-    const sim = seedSim({ category, weighting });
+    const sim = seedSim({ category, weighting, startMs });
     simRef.current = sim;
     saveSim(sim, "index");
     setView(deriveView(sim));
   }, []);
+
+  const onSetStartDate = useCallback((ms: number) => {
+    const b = simRef.current?.basket;
+    if (!b) return;
+    reseed(b.name, b.weighting, ms);
+  }, [reseed]);
 
   const onTick = useCallback(() => {
     if (!simRef.current) return;
@@ -242,7 +250,7 @@ export default function BasketPage() {
 
   const {
     summary, value, rows, portfolios, history, weighting, memberIds,
-    schedule, dateLabel, nextRebalanceLabel, yourUnits, yourUnitsValue, unitsOutstanding,
+    schedule, dateLabel, startDateValue, nextRebalanceLabel, yourUnits, yourUnitsValue, unitsOutstanding,
   } = view;
   const totalReturn = summary.totalReturn;
   const available = allPeople().filter((p) => !memberIds.has(p.ticker));
@@ -317,10 +325,12 @@ export default function BasketPage() {
             {/* Simulated calendar */}
             <SimControls
               dateLabel={dateLabel}
+              startDateValue={startDateValue}
               nextRebalanceLabel={nextRebalanceLabel}
               schedule={schedule}
               onAdvanceDays={onAdvanceDays}
               onSetSchedule={onSetSchedule}
+              onSetStartDate={onSetStartDate}
             />
 
             {/* Index value hero */}

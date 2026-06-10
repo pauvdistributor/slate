@@ -52,6 +52,7 @@ interface View {
   portfolios: BotPortfolio[];
   schedule: RebalanceSchedule;
   dateLabel: string;
+  startDateValue: string;
   nextRebalanceLabel: string;
   yourUnitsValue: number;
 }
@@ -67,6 +68,7 @@ function deriveView(sim: SimState): View {
     portfolios: botPortfolios(sim),
     schedule: b.schedule,
     dateLabel: simDateLabel(b.clockMs),
+    startDateValue: new Date(b.startMs).toISOString().slice(0, 10),
     nextRebalanceLabel: simDateLabel(nextRebalanceMs(b)),
     yourUnitsValue: holderValue(b, YOU),
   };
@@ -102,15 +104,21 @@ export default function SinglePage() {
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const reseed = useCallback((category: string, weighting: WeightingMode) => {
+  const reseed = useCallback((category: string, weighting: WeightingMode, startMs?: number) => {
     resetSim("single");
-    const sim = seedSim({ category, weighting, mode: "single" });
+    const sim = seedSim({ category, weighting, mode: "single", startMs });
     simRef.current = sim;
     saveSim(sim, "single");
     setLastResult(null);
     setPerson("");
     setView(deriveView(sim));
   }, []);
+
+  const onSetStartDate = useCallback((ms: number) => {
+    const b = simRef.current?.basket;
+    if (!b) return;
+    reseed(b.name, b.weighting, ms);
+  }, [reseed]);
 
   const onTick = useCallback(() => {
     if (!simRef.current) return;
@@ -187,7 +195,7 @@ export default function SinglePage() {
     );
   }
 
-  const { summary, value, rows, history, portfolios, schedule, dateLabel, nextRebalanceLabel, yourUnitsValue } = view;
+  const { summary, value, rows, history, portfolios, schedule, dateLabel, startDateValue, nextRebalanceLabel, yourUnitsValue } = view;
   const selectedRow = rows.find((r) => r.id === selected);
   const primaryName = selectedRow?.name ?? "person";
 
@@ -254,10 +262,12 @@ export default function SinglePage() {
             {/* Simulated calendar */}
             <SimControls
               dateLabel={dateLabel}
+              startDateValue={startDateValue}
               nextRebalanceLabel={nextRebalanceLabel}
               schedule={schedule}
               onAdvanceDays={onAdvanceDays}
               onSetSchedule={onSetSchedule}
+              onSetStartDate={onSetStartDate}
             />
 
             <div className="grid md:grid-cols-2 gap-4">

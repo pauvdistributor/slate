@@ -10,21 +10,42 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
  */
 export default function SimControls({
   dateLabel,
+  startDateValue,
   nextRebalanceLabel,
   schedule,
   onAdvanceDays,
   onSetSchedule,
+  onSetStartDate,
 }: {
   dateLabel: string;
+  /** Start date as YYYY-MM-DD for the date input. */
+  startDateValue: string;
   nextRebalanceLabel: string;
   schedule: RebalanceSchedule;
   onAdvanceDays: (n: number) => void;
   onSetSchedule: (p: Partial<RebalanceSchedule>) => void;
+  /** Pick a new start date (ms, UTC midnight). Reseeds the sim from that date. */
+  onSetStartDate: (ms: number) => void;
 }) {
   return (
     <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-3 mb-4 flex items-center gap-x-5 gap-y-2 flex-wrap text-xs">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Sim date</span>
+        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Start</span>
+        <input
+          type="date"
+          value={startDateValue}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!v) return;
+            const ms = new Date(`${v}T00:00:00Z`).getTime();
+            if (Number.isFinite(ms)) onSetStartDate(ms);
+          }}
+          title="Set the simulation's start date (reseeds this tab from that date)"
+          className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-1.5 py-1 [color-scheme:dark]"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Now</span>
         <span className="font-semibold text-zinc-100 tabular-nums">{dateLabel}</span>
       </div>
 

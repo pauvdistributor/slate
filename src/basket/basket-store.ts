@@ -110,6 +110,8 @@ export interface SeedOptions {
   baseValue?: number;
   schedule?: Partial<RebalanceSchedule>;
   mode?: SimMode;
+  /** Simulated start date (ms since epoch). */
+  startMs?: number;
 }
 
 /** Seed a fresh simulation for one category (the active basket). */
@@ -124,6 +126,7 @@ export function seedSim(opts?: SeedOptions): SimState {
     weighting,
     baseValue: opts?.baseValue ?? 1000,
     schedule: opts?.schedule,
+    startMs: opts?.startMs,
     constituents: members.map((p) => constituentFromPerson(p, weighting)),
   });
 
