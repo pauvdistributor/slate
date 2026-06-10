@@ -131,6 +131,12 @@ export default function SinglePage() {
   const onSetStartDate = useCallback((ms: number) => reseed({ startMs: ms }), [reseed]);
   const onSetBaseMode = useCallback((m: BaseValueMode) => reseed({ baseValueMode: m }), [reseed]);
 
+  const doRestart = useCallback(() => {
+    if (!simRef.current) return;
+    if (!window.confirm("Restart the simulation? This clears all invests, holdings, and history.")) return;
+    reseed({});
+  }, [reseed]);
+
   const onTick = useCallback(() => {
     if (!simRef.current) return;
     botTick(simRef.current);
@@ -255,7 +261,7 @@ export default function SinglePage() {
                   index units (deployed across all {summary.n} {summary.name} members). Bots run 95/5 invests.
                 </p>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] uppercase tracking-wide text-zinc-500">Category</span>
                 <select
                   value={summary.name}
@@ -267,6 +273,13 @@ export default function SinglePage() {
                     <option key={c.name} value={c.name}>{c.name} ({c.count})</option>
                   ))}
                 </select>
+                <button
+                  onClick={doRestart}
+                  className="rounded-md bg-red-700 hover:bg-red-600 px-3 py-1 text-xs font-medium text-white"
+                  title="Wipe all invests, holdings, and history; reseed a fresh basket"
+                >
+                  Restart Sim
+                </button>
               </div>
             </div>
 
