@@ -18,8 +18,17 @@ import {
   previewInvestment,
   investInPerson,
   investInIndex,
+  buyIndexUnits,
+  sellIndexUnits,
+  holderValue,
+  advanceTime,
+  nextRebalanceAfter,
+  defaultSchedule,
+  simDateLabel,
   constituentPrice,
   getConstituent,
+  DAY_MS,
+  DEFAULT_START_MS,
   type Basket,
 } from "./basket-engine";
 
@@ -304,6 +313,54 @@ describe("investing in the index (money flow to constituents)", () => {
     const bb = res.allocations.find((x) => x.id === "B")!;
     expect(a.amount).toBeGreaterThan(bb.amount); // pro-rata by market cap
     expect(a.amount + bb.amount).toBeCloseTo(1_000, 4);
+  });
+});
+
+describe("index vehicle (ETF units)", () => {
+  it("buying mints units worth the amount; selling redeems the cash back", () => {
+    const b = createBasket({ name: "ETF", baseValue: 1000, constituents: fivePeople() });
+    const r = buyIndexUnits(b, "alice", 10_000);
+    expect(r.units).toBeGreaterThan(0);
+    expect(b.ledger.unitsOutstanding).toBeCloseTo(r.units, 9);
+    expect(b.ledger.holders["alice"]).toBeCloseTo(r.units, 9);
+    // unit price = index value, so holding is worth ~ the amount paid.
+    expect(holderValue(b, "alice")).toBeCloseTo(10_000, 2);
+
+    const sold = sellIndexUnits(b, "alice", r.units);
+    expect(sold.cashOut).toBeCloseTo(10_000, 2); // round-trip on a zero-fee curve
+    expect(b.ledger.unitsOutstanding).toBeCloseTo(0, 6);
+    expect(holderValue(b, "alice")).toBeCloseTo(0, 6);
+  });
+
+  it("single-person invest mints index units (5% leg) AND a direct position (95%)", () => {
+    const b = createBasket({ name: "ETF2", baseValue: 1000, constituents: fivePeople() });
+    const r = investInPerson(b, "A", 10_000, { primaryPct: 0.95 });
+    expect(r.units).toBeGreaterThan(0);
+    expect(b.ledger.holders["investor"]).toBeCloseTo(r.units, 9);
+    const aPositions = Object.values(getConstituent(b, "A")!.market.positions)
+      .filter((p) => p.userId === "investor");
+    expect(aPositions.length).toBe(1); // the 95% direct buy
+  });
+});
+
+describe("simulated calendar & scheduled rebalances", () => {
+  it("the first weekly-Friday rebalance after Mon 2024-01-01 is Fri 2024-01-05", () => {
+    expect(simDateLabel(nextRebalanceAfter(DEFAULT_START_MS, defaultSchedule()))).toBe("Fri 2024-01-05");
+  });
+
+  it("advancing 3 weeks fires 3 Friday rebalances at the right dates", () => {
+    const b = createBasket({ name: "Cal", constituents: fivePeople() });
+    const fired = advanceTime(b, 21 * DAY_MS);
+    expect(fired).toBe(3);
+    const rebs = b.history.filter((h) => h.event === "rebalance");
+    expect(rebs.map((r) => r.t.slice(0, 10))).toEqual(["2024-01-05", "2024-01-12", "2024-01-19"]);
+    expect(new Date(b.clockMs).toISOString().slice(0, 10)).toBe("2024-01-22");
+  });
+
+  it("monthly schedule fires on the configured day of month", () => {
+    const b = createBasket({ name: "Cal2", schedule: { frequency: "monthly", dayOfMonth: 1 }, constituents: fivePeople() });
+    const fired = advanceTime(b, 70 * DAY_MS); // ~2.3 months from Jan 1
+    expect(fired).toBe(2); // Feb 1, Mar 1
   });
 });
 

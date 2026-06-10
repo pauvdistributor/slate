@@ -7,6 +7,7 @@ import BasketSimSidebar from "@/components/BasketSimSidebar";
 import InfoTooltip from "@/components/InfoTooltip";
 import Nav from "@/components/Nav";
 import FlowBreakdown from "@/components/FlowBreakdown";
+import SimControls from "@/components/SimControls";
 import {
   indexValue,
   summarize,
@@ -14,13 +15,21 @@ import {
   rebalance,
   addConstituent,
   removeConstituent,
-  investInIndex,
+  buyIndexUnits,
+  sellIndexUnits,
+  holderValue,
+  advanceTime,
+  setSchedule,
+  nextRebalanceMs,
+  simDateLabel,
+  DAY_MS,
   type WeightingMode,
   type BasketSummary,
   type ConstituentSnapshot,
   type IndexPoint,
   type InvestAllocation,
   type IndexInvestResult,
+  type RebalanceSchedule,
 } from "@/basket/basket-engine";
 import {
   botTick,
@@ -56,6 +65,8 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
+const YOU = "you";
+
 interface View {
   summary: BasketSummary;
   value: number;
@@ -64,17 +75,30 @@ interface View {
   history: IndexPoint[];
   weighting: WeightingMode;
   memberIds: Set<string>;
+  schedule: RebalanceSchedule;
+  dateLabel: string;
+  nextRebalanceLabel: string;
+  yourUnits: number;
+  yourUnitsValue: number;
+  unitsOutstanding: number;
 }
 
 function deriveView(sim: SimState): View {
+  const b = sim.basket;
   return {
-    summary: summarize(sim.basket),
-    value: indexValue(sim.basket),
-    rows: snapshotConstituents(sim.basket),
+    summary: summarize(b),
+    value: indexValue(b),
+    rows: snapshotConstituents(b),
     portfolios: botPortfolios(sim),
-    history: sim.basket.history.slice(),
-    weighting: sim.basket.weighting,
-    memberIds: new Set(sim.basket.constituents.map((c) => c.id)),
+    history: b.history.slice(),
+    weighting: b.weighting,
+    memberIds: new Set(b.constituents.map((c) => c.id)),
+    schedule: b.schedule,
+    dateLabel: simDateLabel(b.clockMs),
+    nextRebalanceLabel: simDateLabel(nextRebalanceMs(b)),
+    yourUnits: b.ledger.holders[YOU] ?? 0,
+    yourUnitsValue: holderValue(b, YOU),
+    unitsOutstanding: b.ledger.unitsOutstanding,
   };
 }
 
@@ -133,10 +157,32 @@ export default function BasketPage() {
     if (!sim) return;
     const a = parseFloat(investAmt) || 0;
     if (a <= 0) return;
-    const res = investInIndex(sim.basket, a);
+    const res = buyIndexUnits(sim.basket, YOU, a);
     setLastInvest(res);
     refresh();
   }, [investAmt, refresh]);
+
+  const doRedeem = useCallback(() => {
+    const sim = simRef.current;
+    if (!sim) return;
+    const units = sim.basket.ledger.holders[YOU] ?? 0;
+    if (units <= 0) return;
+    sellIndexUnits(sim.basket, YOU, units);
+    setLastInvest(null);
+    refresh();
+  }, [refresh]);
+
+  const onAdvanceDays = useCallback((n: number) => {
+    if (!simRef.current) return;
+    advanceTime(simRef.current.basket, n * DAY_MS);
+    refresh();
+  }, [refresh]);
+
+  const onSetSchedule = useCallback((p: Partial<RebalanceSchedule>) => {
+    if (!simRef.current) return;
+    setSchedule(simRef.current.basket, p);
+    refresh();
+  }, [refresh]);
 
   const doAdd = useCallback(() => {
     if (!simRef.current || !addId) return;
@@ -194,7 +240,10 @@ export default function BasketPage() {
     );
   }
 
-  const { summary, value, rows, portfolios, history, weighting, memberIds } = view;
+  const {
+    summary, value, rows, portfolios, history, weighting, memberIds,
+    schedule, dateLabel, nextRebalanceLabel, yourUnits, yourUnitsValue, unitsOutstanding,
+  } = view;
   const totalReturn = summary.totalReturn;
   const available = allPeople().filter((p) => !memberIds.has(p.ticker));
 
@@ -265,6 +314,15 @@ export default function BasketPage() {
               </div>
             </div>
 
+            {/* Simulated calendar */}
+            <SimControls
+              dateLabel={dateLabel}
+              nextRebalanceLabel={nextRebalanceLabel}
+              schedule={schedule}
+              onAdvanceDays={onAdvanceDays}
+              onSetSchedule={onSetSchedule}
+            />
+
             {/* Index value hero */}
             <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-5 mb-4 flex items-end justify-between">
               <div>
@@ -316,9 +374,26 @@ export default function BasketPage() {
                     className="w-28 rounded border border-zinc-700 bg-zinc-900 text-sm text-zinc-200 px-2 py-1.5"
                   />
                   <button onClick={doInvestIndex} className="rounded-md bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white">
-                    Invest
+                    Buy units
                   </button>
                 </div>
+              </div>
+
+              {/* Holdings (the ETF vehicle) */}
+              <div className="flex items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2 mb-3 text-xs flex-wrap gap-2">
+                <div className="flex gap-5">
+                  <span className="text-zinc-500">Your units: <span className="text-zinc-200 tabular-nums">{yourUnits.toFixed(4)}</span></span>
+                  <span className="text-zinc-500">Value: <span className="text-emerald-300 tabular-nums">{fmtUSD(yourUnitsValue)}</span></span>
+                  <span className="text-zinc-500">Unit price: <span className="text-zinc-300 tabular-nums">{fmtUSD(value)}</span></span>
+                  <span className="text-zinc-500">Units outstanding: <span className="text-zinc-300 tabular-nums">{unitsOutstanding.toFixed(4)}</span></span>
+                </div>
+                <button
+                  onClick={doRedeem}
+                  disabled={yourUnits <= 0}
+                  className="rounded-md bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 px-3 py-1 text-xs font-medium text-white"
+                >
+                  Redeem all
+                </button>
               </div>
 
               <FlowBreakdown

@@ -1000,3 +1000,116 @@ export function shortClose(
     liquidations: walkRes.liquidations,
   };
 }
+
+// ============================================================
+// RAW POOL TRADES (positionless)
+// ------------------------------------------------------------
+// The index vehicle (ETF) holds an aggregate token balance per constituent,
+// not individual user positions. These helpers move Q and return tokens/
+// proceeds without creating position records, so the basket layer can track
+// the pool's holdings itself. Same math as buy/sell.
+// ============================================================
+
+export interface RawBuyResult {
+  state: PauvState;
+  tokens: number;
+  spent: number;
+  newPrice: number;
+  fee: number;
+  liquidations: Liq[];
+}
+
+/** Buy `amountUSD` of tokens into the curve without creating a position. */
+export function buyValue(
+  prevState: PauvState,
+  cfg: PauvConfig,
+  amountUSD: number,
+  userId = "pool",
+): RawBuyResult {
+  const state = cloneState(prevState);
+  const fee = amountUSD * cfg.feeRate;
+  const netUSD = amountUSD - fee;
+  const qBefore = state.Q;
+  const priceBefore = price(qBefore, cfg.P0, cfg.b, cfg.alpha);
+
+  const walkRes = walk(state, cfg, qBefore, netUSD, Infinity);
+  state.treasury.balance += fee;
+
+  state.txLog.push({
+    id: genId("tx"),
+    type: "buy",
+    positionId: "pool",
+    userId,
+    amountIn: amountUSD,
+    amountOut: 0,
+    tokens: walkRes.callerTokens,
+    fee,
+    qBefore,
+    qAfter: state.Q,
+    priceBefore,
+    priceAfter: price(state.Q, cfg.P0, cfg.b, cfg.alpha),
+    timestamp: new Date().toISOString(),
+  });
+
+  assertReserveSufficiency(state, cfg, "buyValue");
+
+  return {
+    state,
+    tokens: walkRes.callerTokens,
+    spent: amountUSD,
+    newPrice: price(state.Q, cfg.P0, cfg.b, cfg.alpha),
+    fee,
+    liquidations: walkRes.liquidations,
+  };
+}
+
+export interface SellTokensResult {
+  state: PauvState;
+  tokens: number;
+  netProceeds: number;
+  newPrice: number;
+  fee: number;
+}
+
+/** Sell `tokens` of supply back to the curve without a position. */
+export function sellTokens(
+  prevState: PauvState,
+  cfg: PauvConfig,
+  tokens: number,
+  userId = "pool",
+): SellTokensResult {
+  const state = cloneState(prevState);
+  if (!(tokens > 0)) {
+    return { state, tokens: 0, netProceeds: 0, newPrice: price(state.Q, cfg.P0, cfg.b, cfg.alpha), fee: 0 };
+  }
+  const qBefore = state.Q;
+  const priceBefore = price(qBefore, cfg.P0, cfg.b, cfg.alpha);
+  const Q2 = qBefore - tokens;
+
+  const grossProceeds = costIntegral(Q2, qBefore, cfg.P0, cfg.b, cfg.alpha);
+  const fee = grossProceeds * cfg.feeRate;
+  const netProceeds = grossProceeds - fee;
+
+  state.Q = Q2;
+  state.treasury.balance += fee;
+
+  state.txLog.push({
+    id: genId("tx"),
+    type: "sell",
+    positionId: "pool",
+    userId,
+    amountIn: 0,
+    amountOut: netProceeds,
+    tokens,
+    fee,
+    qBefore,
+    qAfter: Q2,
+    priceBefore,
+    priceAfter: price(Q2, cfg.P0, cfg.b, cfg.alpha),
+    timestamp: new Date().toISOString(),
+  });
+
+  assertReserveSufficiency(state, cfg, "sellTokens");
+
+  return { state, tokens, netProceeds, newPrice: price(Q2, cfg.P0, cfg.b, cfg.alpha), fee };
+}

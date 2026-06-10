@@ -1,0 +1,75 @@
+"use client";
+
+import type { RebalanceSchedule, RebalanceFrequency } from "@/basket/basket-engine";
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * Simulated-calendar controls: shows the current sim date, lets you advance
+ * time manually, and configure the auto-rebalance schedule (e.g. every Friday).
+ */
+export default function SimControls({
+  dateLabel,
+  nextRebalanceLabel,
+  schedule,
+  onAdvanceDays,
+  onSetSchedule,
+}: {
+  dateLabel: string;
+  nextRebalanceLabel: string;
+  schedule: RebalanceSchedule;
+  onAdvanceDays: (n: number) => void;
+  onSetSchedule: (p: Partial<RebalanceSchedule>) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-3 mb-4 flex items-center gap-x-5 gap-y-2 flex-wrap text-xs">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Sim date</span>
+        <span className="font-semibold text-zinc-100 tabular-nums">{dateLabel}</span>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] uppercase tracking-wide text-zinc-500 mr-1">Advance</span>
+        <button onClick={() => onAdvanceDays(1)} className="rounded bg-zinc-700 hover:bg-zinc-600 px-2 py-1 text-zinc-100">+1d</button>
+        <button onClick={() => onAdvanceDays(7)} className="rounded bg-zinc-700 hover:bg-zinc-600 px-2 py-1 text-zinc-100">+1w</button>
+        <button onClick={() => onAdvanceDays(30)} className="rounded bg-zinc-700 hover:bg-zinc-600 px-2 py-1 text-zinc-100">+1mo</button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Rebalance</span>
+        <select
+          value={schedule.frequency}
+          onChange={(e) => onSetSchedule({ frequency: e.target.value as RebalanceFrequency })}
+          className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-1.5 py-1"
+        >
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+        {schedule.frequency === "weekly" && (
+          <select
+            value={schedule.weekday}
+            onChange={(e) => onSetSchedule({ weekday: parseInt(e.target.value) })}
+            className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-1.5 py-1"
+          >
+            {WEEKDAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+          </select>
+        )}
+        {schedule.frequency === "monthly" && (
+          <select
+            value={schedule.dayOfMonth}
+            onChange={(e) => onSetSchedule({ dayOfMonth: parseInt(e.target.value) })}
+            className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-1.5 py-1"
+          >
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>day {d}</option>)}
+          </select>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 text-zinc-500">
+        <span className="text-[10px] uppercase tracking-wide">Next</span>
+        <span className="text-amber-300 tabular-nums">{nextRebalanceLabel}</span>
+      </div>
+    </div>
+  );
+}

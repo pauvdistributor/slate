@@ -25,8 +25,10 @@ import {
   type Constituent,
   recordTick,
   indexValue,
-  isRebalanceDue,
-  rebalance,
+  advanceTime,
+  investInPerson,
+  holderValue,
+  DAY_MS,
 } from "./basket-engine";
 
 export const BOT_IDS = ["bot-1", "bot-2", "bot-3", "bot-4", "bot-5"] as const;
@@ -34,17 +36,24 @@ export type BotId = (typeof BOT_IDS)[number];
 
 export const BOT_STARTING_CASH = 100_000;
 
+/** What the bots do each tick. "index" = trade constituents; "single" = 95/5 invests. */
+export type SimMode = "index" | "single";
+
 export interface SimConfig {
-  /** Min USD per opened position. */
+  /** Min USD per opened position / invest. */
   minTrade: number;
-  /** Max USD per opened position. */
+  /** Max USD per opened position / invest. */
   maxTrade: number;
-  /** −1 (max bear) … +1 (max bull): skews long/short choice. */
+  /** −1 (max bear) … +1 (max bull): skews long/short choice (index mode). */
   bias: number;
-  /** Probability a tick tries to close an existing position first. */
+  /** Probability a tick tries to close an existing position first (index mode). */
   closeChance: number;
-  /** Auto-rebalance when the basket's interval elapses. */
+  /** Advance the sim calendar and fire scheduled rebalances each tick. */
   autoRebalance: boolean;
+  /** How much simulated time each tick advances (default 1 day). */
+  simMsPerTick: number;
+  /** Direct fraction for single-mode invests (default 0.95). */
+  primaryPct: number;
 }
 
 export function defaultSimConfig(overrides?: Partial<SimConfig>): SimConfig {
@@ -54,6 +63,8 @@ export function defaultSimConfig(overrides?: Partial<SimConfig>): SimConfig {
     bias: 0,
     closeChance: 0.3,
     autoRebalance: true,
+    simMsPerTick: DAY_MS,
+    primaryPct: 0.95,
     ...overrides,
   };
 }
@@ -62,6 +73,8 @@ export interface SimState {
   basket: Basket;
   botCash: Record<string, number>;
   config: SimConfig;
+  /** What the bots do — set by which tab seeded the sim. */
+  mode: SimMode;
   /** Total ticks executed. */
   ticks: number;
 }
@@ -69,7 +82,7 @@ export interface SimState {
 export interface SimEvent {
   tick: number;
   botId: string;
-  action: "buy" | "sell" | "short_open" | "short_close" | "rebalance" | "skip";
+  action: "buy" | "sell" | "short_open" | "short_close" | "invest" | "rebalance" | "skip";
   constituentId?: string;
   constituentName?: string;
   amount?: number;
@@ -77,10 +90,10 @@ export interface SimEvent {
   note?: string;
 }
 
-export function createSim(basket: Basket, config?: Partial<SimConfig>): SimState {
+export function createSim(basket: Basket, config?: Partial<SimConfig>, mode: SimMode = "index"): SimState {
   const botCash: Record<string, number> = {};
   for (const id of BOT_IDS) botCash[id] = BOT_STARTING_CASH;
-  return { basket, botCash, config: defaultSimConfig(config), ticks: 0 };
+  return { basket, botCash, config: defaultSimConfig(config), mode, ticks: 0 };
 }
 
 function randBetween(min: number, max: number): number {
@@ -113,22 +126,18 @@ export function botTick(sim: SimState, botId: BotId = pick(BOT_IDS)): SimEvent {
   sim.ticks++;
   const { config, basket } = sim;
 
-  // Auto-rebalance if due (PDF Part 6) — happens at most once per tick.
-  if (config.autoRebalance && isRebalanceDue(basket)) {
-    rebalance(basket, "auto weekly rebalance");
-    return {
-      tick: sim.ticks,
-      botId,
-      action: "rebalance",
-      indexValue: indexValue(basket),
-      note: "auto rebalance",
-    };
-  }
+  // Advance the simulated calendar. Scheduled rebalances (e.g. every Friday)
+  // fire inside advanceTime at their true dates.
+  if (config.autoRebalance) advanceTime(basket, config.simMsPerTick);
+  else basket.clockMs += config.simMsPerTick;
 
   if (basket.constituents.length === 0) {
     return { tick: sim.ticks, botId, action: "skip", indexValue: indexValue(basket), note: "no constituents" };
   }
 
+  if (sim.mode === "single") return singleInvestTick(sim, botId);
+
+  // ---- index mode: trade the constituents directly ----
   // Try to close an existing position first.
   const open = botOpenPositions(sim, botId);
   if (open.length > 0 && Math.random() < config.closeChance) {
@@ -188,6 +197,31 @@ export function botTick(sim: SimState, botId: BotId = pick(BOT_IDS)): SimEvent {
   }
 }
 
+/** Single-mode tick: a bot invests in a random person with the 95/5 split. */
+function singleInvestTick(sim: SimState, botId: BotId): SimEvent {
+  const { config, basket } = sim;
+  const cash = sim.botCash[botId] ?? 0;
+  if (cash < config.minTrade) {
+    return { tick: sim.ticks, botId, action: "skip", indexValue: indexValue(basket), note: "insufficient cash" };
+  }
+  const amount = randBetween(config.minTrade, Math.min(config.maxTrade, Math.floor(cash)));
+  const person = pick(basket.constituents);
+  try {
+    investInPerson(basket, person.id, amount, { primaryPct: config.primaryPct, investorId: botId });
+    sim.botCash[botId] -= amount;
+    return {
+      tick: sim.ticks, botId, action: "invest",
+      constituentId: person.id, constituentName: person.name, amount,
+      indexValue: indexValue(basket),
+    };
+  } catch (e) {
+    return {
+      tick: sim.ticks, botId, action: "skip", constituentId: person.id, constituentName: person.name,
+      indexValue: indexValue(basket), note: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
 /**
  * Close every open position across all constituents (any user). Mutates the
  * basket's constituent markets in place. Returns the number of positions closed.
@@ -212,7 +246,10 @@ export function closeAllPositions(sim: SimState): number {
 export interface BotPortfolio {
   botId: string;
   cash: number;
+  /** Value of direct positions in the constituents. */
   openValue: number;
+  /** Value of index units held (single/index investing). */
+  unitsValue: number;
   portfolio: number;
   pnl: number;
 }
@@ -225,8 +262,9 @@ export function botPortfolios(sim: SimState): BotPortfolio[] {
         openValue += p.currentValue;
       }
     }
+    const unitsValue = holderValue(sim.basket, botId);
     const cash = sim.botCash[botId] ?? 0;
-    const portfolio = cash + openValue;
-    return { botId, cash, openValue, portfolio, pnl: portfolio - BOT_STARTING_CASH };
+    const portfolio = cash + openValue + unitsValue;
+    return { botId, cash, openValue, unitsValue, portfolio, pnl: portfolio - BOT_STARTING_CASH };
   });
 }

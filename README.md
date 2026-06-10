@@ -15,21 +15,30 @@ in `doc/index-implementation.md`.
 
 ## Two modes (tabs)
 
-1. **Index** (`/basket`) — invest in / track a whole **category** (e.g.
-   "Basketball" = the NBA-All-Stars analog). Equal-weight index over every member,
-   with rebalancing and add/remove.
+1. **Index** (`/basket`) — the index is a **tradeable vehicle (ETF)**. Buying it
+   mints **index units** (unit price = the index value) and deploys your cash
+   into the members' curves by weight; redeeming burns units and sells the
+   members pro-rata. Plus equal-weight tracking, rebalancing, and add/remove.
 2. **Single** (`/single`) — invest in **one person** (e.g. LeBron) with a **95/5
-   split**: 95% buys that person's curve directly, the remaining **5% goes into
-   the index** (`investInIndex`), which fans it out across the members by weight.
-   The person also gets their index slice, so their effective share is a little
-   over 95% and the whole index lifts with them.
+   split**: 95% buys that person's curve directly (a position), the remaining
+   **5% buys index units** (deployed across the members). The person also gets
+   their index slice, so their effective share is a little over 95%.
 
-Both tabs visualize the **money flow** — a stacked routing bar (direct vs index)
-plus a per-constituent breakdown of dollars in and the resulting price move.
+Both tabs run a **bot simulation over a simulated calendar** and visualize the
+**money flow** (a routing bar + per-constituent breakdown with price moves).
 
-Each tab is its **own independent simulation** (separate localStorage state), so
-you can run an index experiment and a single-person experiment side by side
-without one disturbing the other.
+### Tradeable index vehicle (ETF)
+`buyIndexUnits` / `sellIndexUnits` model creation/redemption: the pool holds
+real constituent tokens, units track the index value, and index trades move the
+members. `investInPerson` routes its 5% leg through `buyIndexUnits`.
+
+### Simulated calendar + scheduled rebalances
+The sim runs on a **simulated clock**, not wall-clock. Each bot tick advances
+time (default 1 day) and **auto-rebalances on schedule — weekly on Fridays by
+default**. You can change the frequency (daily/weekly/monthly) and weekday, and
+manually jump the clock (+1d / +1w / +1mo). Rebalances fire at their true dates.
+
+Each tab is its **own independent simulation** (separate localStorage state).
 
 ## Real Pauv roster
 

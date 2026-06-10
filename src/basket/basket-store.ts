@@ -21,8 +21,8 @@ import {
   type PauvConfig,
   type PauvState,
 } from "@/market/pauv-engine";
-import { createBasket, type WeightingMode } from "./basket-engine";
-import { createSim, type SimState } from "./simulation";
+import { createBasket, type WeightingMode, type RebalanceSchedule } from "./basket-engine";
+import { createSim, type SimState, type SimMode } from "./simulation";
 import rosterJson from "@/data/roster.json";
 
 // Each UI tab keeps its OWN simulation under a separate key, so trades,
@@ -107,7 +107,8 @@ export interface SeedOptions {
   category?: string;
   weighting?: WeightingMode;
   baseValue?: number;
-  rebalanceIntervalMs?: number;
+  schedule?: Partial<RebalanceSchedule>;
+  mode?: SimMode;
 }
 
 /** Seed a fresh simulation for one category (the active basket). */
@@ -121,11 +122,11 @@ export function seedSim(opts?: SeedOptions): SimState {
     name: category,
     weighting,
     baseValue: opts?.baseValue ?? 1000,
-    rebalanceIntervalMs: opts?.rebalanceIntervalMs,
+    schedule: opts?.schedule,
     constituents: members.map((p) => constituentFromPerson(p, weighting)),
   });
 
-  return createSim(basket);
+  return createSim(basket, undefined, opts?.mode ?? "index");
 }
 
 export function loadSim(scope: SimScope): SimState | null {

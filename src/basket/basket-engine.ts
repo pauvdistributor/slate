@@ -40,6 +40,8 @@ import {
   defaultState,
   currentPrice as marketPrice,
   buy,
+  buyValue,
+  sellTokens,
 } from "@/market/pauv-engine";
 
 export type WeightingMode = "equal" | "mcap";
@@ -95,10 +97,14 @@ export interface Basket {
   /** Divisor for "mcap" mode — PDF Part 5. (Unused by "equal" mode.) */
   divisor: number;
   constituents: Constituent[];
-  /** Rebalance cadence in ms (weekly by default — PDF Part 6). */
-  rebalanceIntervalMs: number;
-  /** Timestamp (ms) of the last rebalance. */
-  lastRebalanceAt: number;
+  /** Rebalance schedule over the SIMULATED calendar (PDF Part 6). */
+  schedule: RebalanceSchedule;
+  /** Simulated-time clock (ms since epoch) — when the sim "is". */
+  clockMs: number;
+  /** Simulated start time (ms). */
+  startMs: number;
+  /** The tradeable index vehicle (ETF): units, holders, pooled holdings. */
+  ledger: IndexLedger;
   /** Index value time series. */
   history: IndexPoint[];
   /** Internal sequence counter for history points. */
@@ -106,16 +112,100 @@ export interface Basket {
   createdAt: string;
 }
 
+export type RebalanceFrequency = "daily" | "weekly" | "monthly";
+
+export interface RebalanceSchedule {
+  frequency: RebalanceFrequency;
+  /** 0=Sun … 6=Sat — used by "weekly" (default 5 = Friday). */
+  weekday: number;
+  /** 1..28 — used by "monthly". */
+  dayOfMonth: number;
+  /** Simulated time (ms) of the last rebalance. */
+  lastRebalanceMs: number;
+}
+
+/**
+ * The index vehicle ledger (ETF creation/redemption). Buying the index mints
+ * units (price = index value) and deploys cash into the members' curves; the
+ * pool holds the resulting tokens. Selling burns units and redeems pro-rata.
+ */
+export interface IndexLedger {
+  unitsOutstanding: number;
+  /** userId → index units held. */
+  holders: Record<string, number>;
+  /** constituentId → tokens the index pool holds on that curve. */
+  poolTokens: Record<string, number>;
+}
+
 // ------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+export const DAY_MS = 24 * 60 * 60 * 1000;
+/** Default simulated start: Monday, 1 Jan 2024 (so weekdays line up cleanly). */
+export const DEFAULT_START_MS = Date.UTC(2024, 0, 1);
+export const FRIDAY = 5;
+
+const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 let basketIdCounter = 0;
 function genBasketId(): string {
   basketIdCounter = (basketIdCounter + 1) % 1_000_000;
   return `basket_${Date.now()}_${basketIdCounter}`;
+}
+
+export function defaultSchedule(overrides?: Partial<RebalanceSchedule>): RebalanceSchedule {
+  return {
+    frequency: "weekly",
+    weekday: FRIDAY,
+    dayOfMonth: 1,
+    lastRebalanceMs: DEFAULT_START_MS,
+    ...overrides,
+  };
+}
+
+function midnightUTC(ms: number): number {
+  const d = new Date(ms);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/** The next scheduled rebalance instant strictly after `afterMs`. */
+export function nextRebalanceAfter(afterMs: number, s: RebalanceSchedule): number {
+  if (s.frequency === "daily") {
+    return midnightUTC(afterMs) + DAY_MS;
+  }
+  if (s.frequency === "weekly") {
+    let t = midnightUTC(afterMs) + DAY_MS; // start at next day's midnight
+    for (let i = 0; i < 8; i++) {
+      if (new Date(t).getUTCDay() === s.weekday) return t;
+      t += DAY_MS;
+    }
+    return t;
+  }
+  // monthly
+  const d = new Date(afterMs);
+  let y = d.getUTCFullYear();
+  let m = d.getUTCMonth();
+  let t = Date.UTC(y, m, s.dayOfMonth);
+  if (t <= afterMs) {
+    m += 1;
+    if (m > 11) { m = 0; y += 1; }
+    t = Date.UTC(y, m, s.dayOfMonth);
+  }
+  return t;
+}
+
+function scheduleLabel(s: RebalanceSchedule): string {
+  if (s.frequency === "weekly") return `weekly (${WEEKDAY_NAMES[s.weekday]})`;
+  if (s.frequency === "monthly") return `monthly (day ${s.dayOfMonth})`;
+  return "daily";
+}
+
+/** Human date for a sim instant, e.g. "Fri 2024-01-05". */
+export function simDateLabel(ms: number): string {
+  const d = new Date(ms);
+  const day = WEEKDAY_NAMES[d.getUTCDay()];
+  return `${day} ${d.toISOString().slice(0, 10)}`;
 }
 
 /** Spot price of a constituent's market right now. */
@@ -228,7 +318,7 @@ function pushPoint(
 ): void {
   basket.history.push({
     seq: basket.seq++,
-    t: new Date().toISOString(),
+    t: new Date(basket.clockMs).toISOString(),
     value: indexValue(basket),
     event,
     note,
@@ -282,7 +372,8 @@ export interface CreateBasketOptions {
   name: string;
   weighting?: WeightingMode;
   baseValue?: number;
-  rebalanceIntervalMs?: number;
+  schedule?: Partial<RebalanceSchedule>;
+  startMs?: number;
   constituents: Array<{
     id: string;
     name: string;
@@ -314,7 +405,7 @@ export function createBasket(opts: CreateBasketOptions): Basket {
     };
   });
 
-  const now = Date.now();
+  const startMs = opts.startMs ?? DEFAULT_START_MS;
   const basket: Basket = {
     id: genBasketId(),
     name: opts.name,
@@ -323,8 +414,10 @@ export function createBasket(opts: CreateBasketOptions): Basket {
     anchorValue: baseValue,
     divisor: 1, // set below for mcap
     constituents,
-    rebalanceIntervalMs: opts.rebalanceIntervalMs ?? WEEK_MS,
-    lastRebalanceAt: now,
+    schedule: defaultSchedule({ ...opts.schedule, lastRebalanceMs: startMs }),
+    clockMs: startMs,
+    startMs,
+    ledger: { unitsOutstanding: 0, holders: {}, poolTokens: {} },
     history: [],
     seq: 0,
     createdAt: new Date().toISOString(),
@@ -348,14 +441,48 @@ export function createBasket(opts: CreateBasketOptions): Basket {
 export function rebalance(basket: Basket, note = "rebalance"): Basket {
   // No composition change → current value is unchanged by the re-anchor.
   reanchorTo(basket, indexValue(basket));
-  basket.lastRebalanceAt = Date.now();
+  basket.schedule.lastRebalanceMs = basket.clockMs;
   pushPoint(basket, "rebalance", note);
   return basket;
 }
 
-/** True if at least one rebalance interval has elapsed since the last one. */
-export function isRebalanceDue(basket: Basket, now = Date.now()): boolean {
-  return now - basket.lastRebalanceAt >= basket.rebalanceIntervalMs;
+/** True if a scheduled rebalance is due at or before the current sim time. */
+export function isRebalanceDue(basket: Basket): boolean {
+  return nextRebalanceAfter(basket.schedule.lastRebalanceMs, basket.schedule) <= basket.clockMs;
+}
+
+/** The next scheduled rebalance instant (sim ms) for this basket. */
+export function nextRebalanceMs(basket: Basket): number {
+  return nextRebalanceAfter(basket.schedule.lastRebalanceMs, basket.schedule);
+}
+
+/**
+ * Advance the simulated clock by `deltaMs`, firing any scheduled rebalances
+ * whose instant falls within the elapsed window (each at its true date). This
+ * is how "auto-rebalance every Friday" happens over the sim calendar.
+ * Returns the number of rebalances fired.
+ */
+export function advanceTime(basket: Basket, deltaMs: number): number {
+  if (!(deltaMs > 0)) return 0;
+  const to = basket.clockMs + deltaMs;
+  let fired = 0;
+  let t = nextRebalanceAfter(basket.schedule.lastRebalanceMs, basket.schedule);
+  while (t <= to) {
+    basket.clockMs = t;
+    reanchorTo(basket, indexValue(basket));
+    basket.schedule.lastRebalanceMs = t;
+    pushPoint(basket, "rebalance", `scheduled ${scheduleLabel(basket.schedule)} rebalance`);
+    fired += 1;
+    t = nextRebalanceAfter(t, basket.schedule);
+  }
+  basket.clockMs = to;
+  return fired;
+}
+
+/** Change the rebalance schedule (re-anchors the "last" marker to now). */
+export function setSchedule(basket: Basket, next: Partial<RebalanceSchedule>): Basket {
+  basket.schedule = { ...basket.schedule, ...next, lastRebalanceMs: basket.clockMs };
+  return basket;
 }
 
 /**
@@ -407,25 +534,27 @@ export function removeConstituent(basket: Basket, id: string): Basket {
 }
 
 // ------------------------------------------------------------
-// Investing — money flow into the constituents
+// The index vehicle (ETF) — buy/sell index UNITS
 // ------------------------------------------------------------
-// Two entry points, both built on the SAME index-allocation split so the
-// money flow is consistent:
+// Buying the index mints units (price = the index value) and DEPLOYS the cash
+// into the members' bonding curves; the pool holds the resulting tokens.
+// Selling burns units and redeems pro-rata (sells the pool's tokens back).
 //
-//   investInIndex(basket, $X)            — buy "the index": $X flows into the
-//       constituents by weight (equal weight ⇒ $X/N each; market-cap ⇒ pro-rata
-//       by market cap). This is the canonical "money into the equally weighted
-//       individuals" flow shown on the Index tab.
+//   investInIndex / buyIndexUnits(basket, user, $X)
+//       deploy $X by weight (equal ⇒ $X/N each; market-cap ⇒ pro-rata),
+//       mint units = $X / indexValueAfter to `user`.
 //
-//   investInPerson(basket, person, $X)   — 95% buys the person directly; the
-//       remaining 5% is routed THROUGH the index (investInIndex), so it spreads
-//       across the members by weight. The person also gets their index slice,
-//       so their effective share is 95% + (5% × theirWeight).
+//   sellIndexUnits(basket, user, units)
+//       sell that fraction of the pool's holdings, return cash, burn units.
+//
+//   investInPerson(basket, person, $X)
+//       95% buys the person directly (a normal long position); the remaining
+//       5% buys index UNITS for the investor (which deploys across the members).
 
 export interface InvestAllocation {
   id: string;
   name: string;
-  /** Total dollars sent to this constituent's curve. */
+  /** Net dollars sent to this constituent's curve (negative on redemption). */
   amount: number;
   /** Dollars from the direct/primary leg (single-person invest only). */
   primaryAmount: number;
@@ -466,31 +595,127 @@ function indexAllocationSplit(basket: Basket, amount: number): Map<string, numbe
 export interface IndexInvestResult {
   basket: Basket;
   amount: number;
+  /** Index units minted to the holder. */
+  units: number;
+  /** Price paid per unit (= index value after deployment). */
+  unitPrice: number;
+  holder: string;
   allocations: InvestAllocation[];
   indexBefore: number;
   indexAfter: number;
 }
 
 /**
- * Invest `amount` into the index as a whole. The money flows into the
- * constituents by weight and the index value moves with the resulting prices.
- * Mutates the basket's constituent markets in place.
+ * Buy `amount` of the index for `userId`: deploy into the members' curves and
+ * mint index units. Mutates the basket in place.
  */
+export function buyIndexUnits(
+  basket: Basket,
+  userId: string,
+  amount: number,
+  opts?: { primaryMap?: Map<string, number> },
+): IndexInvestResult {
+  if (basket.constituents.length === 0) throw new Error("basket has no constituents");
+  if (!(amount > 0)) throw new Error("amount must be positive");
+
+  const indexBefore = indexValue(basket);
+  const indexSplit = indexAllocationSplit(basket, amount);
+  const primaryMap = opts?.primaryMap ?? new Map<string, number>();
+
+  const allocations: InvestAllocation[] = [];
+  for (const c of basket.constituents) {
+    const indexAmount = indexSplit.get(c.id) ?? 0;
+    const primaryAmount = primaryMap.get(c.id) ?? 0;
+    const a = indexAmount + primaryAmount;
+    const priceBefore = constituentPrice(c);
+    let tokens = 0;
+    let priceAfter = priceBefore;
+    if (a > 0) {
+      // The index leg goes to the pool (positionless); a primary leg, if any,
+      // is a direct user position handled by investInPerson — not here.
+      const res = buyValue(c.market, c.config, a, "index-pool");
+      c.market = res.state;
+      tokens = res.tokens;
+      priceAfter = res.newPrice;
+      basket.ledger.poolTokens[c.id] = (basket.ledger.poolTokens[c.id] ?? 0) + tokens;
+    }
+    allocations.push({
+      id: c.id, name: c.name, amount: a, primaryAmount, indexAmount,
+      pct: amount > 0 ? a / amount : 0, isPrimary: false, tokens, priceBefore, priceAfter,
+    });
+  }
+
+  const unitPrice = indexValue(basket); // mint at post-deployment index value
+  const units = unitPrice > 0 ? amount / unitPrice : 0;
+  basket.ledger.unitsOutstanding += units;
+  basket.ledger.holders[userId] = (basket.ledger.holders[userId] ?? 0) + units;
+
+  const indexAfter = recordTick(basket);
+  return { basket, amount, units, unitPrice, holder: userId, allocations, indexBefore, indexAfter };
+}
+
+/** Alias: invest in the index as a whole (mints units to `investorId`). */
 export function investInIndex(
   basket: Basket,
   amount: number,
   opts?: { investorId?: string },
 ): IndexInvestResult {
-  const investorId = opts?.investorId ?? "index-investor";
-  if (basket.constituents.length === 0) throw new Error("basket has no constituents");
-  if (!(amount > 0)) throw new Error("amount must be positive");
+  return buyIndexUnits(basket, opts?.investorId ?? "index-investor", amount);
+}
+
+export interface IndexRedeemResult {
+  basket: Basket;
+  units: number;
+  cashOut: number;
+  holder: string;
+  allocations: InvestAllocation[];
+  indexBefore: number;
+  indexAfter: number;
+}
+
+/**
+ * Redeem `units` of the index for `userId`: sell that fraction of the pool's
+ * holdings pro-rata and return the cash. Mutates the basket in place.
+ */
+export function sellIndexUnits(
+  basket: Basket,
+  userId: string,
+  units: number,
+): IndexRedeemResult {
+  const held = basket.ledger.holders[userId] ?? 0;
+  const u = Math.min(units, held);
+  if (!(u > 0)) throw new Error("no units to redeem");
+  const totalUnits = basket.ledger.unitsOutstanding;
+  const f = totalUnits > 0 ? u / totalUnits : 0;
 
   const indexBefore = indexValue(basket);
-  const split = indexAllocationSplit(basket, amount);
-  const allocations = executeAllocations(basket, split, new Map(), investorId, amount);
-  const indexAfter = recordTick(basket);
+  const allocations: InvestAllocation[] = [];
+  let cashOut = 0;
+  for (const c of basket.constituents) {
+    const poolTk = basket.ledger.poolTokens[c.id] ?? 0;
+    const tk = poolTk * f;
+    const priceBefore = constituentPrice(c);
+    let proceeds = 0;
+    let priceAfter = priceBefore;
+    if (tk > 0) {
+      const res = sellTokens(c.market, c.config, tk, "index-pool");
+      c.market = res.state;
+      proceeds = res.netProceeds;
+      priceAfter = res.newPrice;
+      basket.ledger.poolTokens[c.id] = poolTk - tk;
+    }
+    cashOut += proceeds;
+    allocations.push({
+      id: c.id, name: c.name, amount: -proceeds, primaryAmount: 0, indexAmount: -proceeds,
+      pct: 0, isPrimary: false, tokens: -tk, priceBefore, priceAfter,
+    });
+  }
 
-  return { basket, amount, allocations, indexBefore, indexAfter };
+  basket.ledger.unitsOutstanding = Math.max(0, totalUnits - u);
+  basket.ledger.holders[userId] = held - u;
+
+  const indexAfter = recordTick(basket);
+  return { basket, units: u, cashOut, holder: userId, allocations, indexBefore, indexAfter };
 }
 
 export interface InvestResult {
@@ -503,6 +728,8 @@ export interface InvestResult {
   effectivePrimaryPct: number;
   /** Dollars sent through the index leg (the "5%"). */
   indexAmount: number;
+  /** Index units minted to the investor from the index leg. */
+  units: number;
   allocations: InvestAllocation[];
   indexBefore: number;
   indexAfter: number;
@@ -535,8 +762,9 @@ export function previewInvestment(
 }
 
 /**
- * Execute a single-person investment: 95% buys the person directly, 5% flows
- * through the index. Mutates the basket's constituent markets in place.
+ * Execute a single-person investment: `primaryPct` (95%) buys the person
+ * directly as a long position; the rest buys index UNITS for the investor
+ * (which deploys across the members). Mutates the basket in place.
  */
 export function investInPerson(
   basket: Basket,
@@ -546,21 +774,48 @@ export function investInPerson(
 ): InvestResult {
   const primaryPct = opts?.primaryPct ?? 0.95;
   const investorId = opts?.investorId ?? "investor";
+  const person = getConstituent(basket, personId);
   if (basket.constituents.length === 0) throw new Error("basket has no constituents");
-  if (!getConstituent(basket, personId)) throw new Error(`person ${personId} not in basket`);
+  if (!person) throw new Error(`person ${personId} not in basket`);
   if (!(amount > 0)) throw new Error("amount must be positive");
 
   const indexBefore = indexValue(basket);
   const primaryAmt = amount * primaryPct;
   const indexAmt = amount * (1 - primaryPct);
 
-  // The 5% goes "into the index": split by weight across all members.
-  const indexSplit = indexAllocationSplit(basket, indexAmt);
-  const primaryMap = new Map<string, number>([[personId, primaryAmt]]);
-  const allocations = executeAllocations(basket, indexSplit, primaryMap, investorId, amount);
+  // 95% — direct long position in the person.
+  const personPriceBefore = constituentPrice(person);
+  let personTokens = 0;
+  if (primaryAmt > 0) {
+    const res = buy(person.market, person.config, investorId, primaryAmt);
+    person.market = res.state;
+    personTokens = res.tokens;
+  }
 
-  const indexAfter = recordTick(basket);
-  const personIndexSlice = indexSplit.get(personId) ?? 0;
+  // 5% — buy index units for the investor (deploys across the members + records the tick).
+  const idx = indexAmt > 0 ? buyIndexUnits(basket, investorId, indexAmt) : null;
+
+  // Merge allocations: start from the index leg, patch in the person's direct buy.
+  const allocations: InvestAllocation[] = (idx?.allocations ?? basket.constituents.map((c) => ({
+    id: c.id, name: c.name, amount: 0, primaryAmount: 0, indexAmount: 0,
+    pct: 0, isPrimary: false, tokens: 0, priceBefore: constituentPrice(c), priceAfter: constituentPrice(c),
+  }))).map((a) => {
+    if (a.id !== personId) return a;
+    return {
+      ...a,
+      amount: a.amount + primaryAmt,
+      primaryAmount: primaryAmt,
+      isPrimary: true,
+      tokens: a.tokens + personTokens,
+      priceBefore: personPriceBefore,
+      priceAfter: constituentPrice(person),
+      pct: amount > 0 ? (a.amount + primaryAmt) / amount : 0,
+    };
+  });
+
+  // If there was no index leg (primaryPct=1) we still must record a tick.
+  const indexAfter = idx ? idx.indexAfter : recordTick(basket);
+  const personIndexSlice = idx?.allocations.find((a) => a.id === personId)?.indexAmount ?? 0;
 
   return {
     basket,
@@ -569,44 +824,25 @@ export function investInPerson(
     primaryPct,
     effectivePrimaryPct: (primaryAmt + personIndexSlice) / amount,
     indexAmount: indexAmt,
+    units: idx?.units ?? 0,
     allocations,
     indexBefore,
     indexAfter,
   };
 }
 
-/**
- * Shared executor: for each constituent buy (indexLeg + primaryLeg) dollars on
- * its curve and return the allocation rows. `primaryMap` is empty for a pure
- * index investment.
- */
-function executeAllocations(
-  basket: Basket,
-  indexSplit: Map<string, number>,
-  primaryMap: Map<string, number>,
-  investorId: string,
-  total: number,
-): InvestAllocation[] {
-  const allocations: InvestAllocation[] = [];
-  for (const c of basket.constituents) {
-    const indexAmount = indexSplit.get(c.id) ?? 0;
-    const primaryAmount = primaryMap.get(c.id) ?? 0;
-    const a = indexAmount + primaryAmount;
-    const priceBefore = constituentPrice(c);
-    let tokens = 0;
-    let priceAfter = priceBefore;
-    if (a > 0) {
-      const res = buy(c.market, c.config, investorId, a);
-      c.market = res.state;
-      tokens = res.tokens;
-      priceAfter = res.newPrice;
-    }
-    allocations.push({
-      id: c.id, name: c.name, amount: a, primaryAmount, indexAmount,
-      pct: total > 0 ? a / total : 0, isPrimary: primaryAmount > 0, tokens, priceBefore, priceAfter,
-    });
-  }
-  return allocations;
+// ------------------------------------------------------------
+// Vehicle holdings views
+// ------------------------------------------------------------
+
+/** Current price of one index unit (= the index value). */
+export function unitPrice(basket: Basket): number {
+  return indexValue(basket);
+}
+
+/** Dollar value of a holder's index units right now. */
+export function holderValue(basket: Basket, userId: string): number {
+  return (basket.ledger.holders[userId] ?? 0) * unitPrice(basket);
 }
 
 // ------------------------------------------------------------

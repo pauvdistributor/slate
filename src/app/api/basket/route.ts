@@ -9,14 +9,13 @@ export async function GET() {
 }
 
 // POST /api/basket — create a new seeded basket for a category.
-// Body: { category?, weighting?, baseValue?, rebalanceIntervalMs? }
+// Body: { category?, weighting?, baseValue? }
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const sim = createSeeded({
     category: body.category,
     weighting: body.weighting as WeightingMode | undefined,
     baseValue: body.baseValue,
-    rebalanceIntervalMs: body.rebalanceIntervalMs,
   });
   return NextResponse.json(summarize(sim.basket), { status: 201 });
 }

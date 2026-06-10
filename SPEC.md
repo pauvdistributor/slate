@@ -55,19 +55,44 @@ The shared mechanism is `reanchorTo(basket, v)`: set `anchorValue = v` (equal) o
 6. mcap divisor: launch == `baseValue`; composition change scales the divisor by
    `newTotal / oldTotal`; larger names move the index more.
 
-## Investing (money flow)
+## Investing (money flow) & the index vehicle
 
-Both entry points use one shared dollar split `indexAllocationSplit(basket, $)`:
+Allocation uses one shared dollar split `indexAllocationSplit(basket, $)`:
 equal weight ⇒ `$/N` each; market-cap ⇒ pro-rata by `marketCap_i / Σ marketCap`.
+
+The index is a **tradeable ETF**. The pool (`basket.ledger`) holds real
+constituent tokens (`poolTokens`), tracks `unitsOutstanding`, and per-holder
+`holders` balances. Unit price = the index value.
 
 | Function | Flow |
 |---|---|
-| `investInIndex(basket, $X)` | $X flows into the constituents by weight (the "money into the equally weighted individuals"). Buys each curve, records a tick. |
-| `investInPerson(basket, person, $X, {primaryPct})` | `primaryPct` (default 0.95) buys the person directly; the rest is routed **through the index** (same split). The person also receives their index slice, so `effectivePrimaryPct = primaryPct + (1−primaryPct)·weight_person`. |
+| `buyIndexUnits(basket, user, $X)` / `investInIndex` | deploy $X into the members by weight (positionless `buyValue`, accumulating `poolTokens`); mint `units = $X / indexValueAfter` to `user`. |
+| `sellIndexUnits(basket, user, units)` | sell `units / unitsOutstanding` of the pool's tokens pro-rata (`sellTokens`), return cash, burn units. |
+| `investInPerson(basket, person, $X, {primaryPct})` | `primaryPct` (0.95) buys the person directly (a long position); the rest calls `buyIndexUnits` for the investor. `effectivePrimaryPct = primaryPct + (1−primaryPct)·weight_person`. |
 
-Tested invariants: index investment sums to the amount and (equal weight) is an
-equal dollar slice per member; the single-invest index leg matches the index
-split exactly; market-cap routes more dollars to bigger names.
+Engine raw helpers (`src/market/pauv-engine.ts`): `buyValue` / `sellTokens`
+move `Q` and return tokens/proceeds without creating positions — used by the pool.
+
+Tested: buying mints units worth the amount; full redemption returns the cash
+(zero-fee round trip) and zeroes units; single-invest mints units AND a direct
+position; market-cap routes more to bigger names.
+
+## Simulated calendar & scheduled rebalances
+
+`basket.clockMs` is the simulated clock; `basket.schedule` is
+`{ frequency: daily|weekly|monthly, weekday (default 5=Fri), dayOfMonth, lastRebalanceMs }`.
+
+- `advanceTime(basket, deltaMs)` advances the clock and fires every scheduled
+  rebalance instant in the elapsed window **at its true date** (history points
+  are stamped with sim time). Returns the count fired.
+- `nextRebalanceAfter(afterMs, schedule)` / `nextRebalanceMs(basket)` /
+  `isRebalanceDue(basket)` / `setSchedule(basket, partial)` / `simDateLabel(ms)`.
+- Bots call `advanceTime` each tick (default 1 day), so "auto-rebalance every
+  Friday" happens over the calendar.
+
+Tested: first weekly-Friday rebalance after Mon 2024-01-01 is Fri 2024-01-05;
+advancing 3 weeks fires exactly 3 Friday rebalances on the right dates; monthly
+fires on the configured day.
 
 ## Out of scope (left for the backend dev)
 
