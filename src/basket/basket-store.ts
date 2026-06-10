@@ -28,7 +28,8 @@ import rosterJson from "@/data/roster.json";
 // Each UI tab keeps its OWN simulation under a separate key, so trades,
 // category, and history on one tab never affect the other.
 export type SimScope = "index" | "single";
-const STORE_KEY_BASE = "basket_sim_state_v2";
+// v3: added the sim clock, rebalance schedule, and ETF ledger to the basket.
+const STORE_KEY_BASE = "basket_sim_state_v3";
 function storeKey(scope: SimScope): string {
   return `${STORE_KEY_BASE}:${scope}`;
 }
@@ -154,12 +155,22 @@ export function resetSim(scope: SimScope): void {
   localStorage.removeItem(storeKey(scope));
 }
 
+/** A persisted sim is usable only if it has the current schema fields. */
+function isValidSim(s: SimState | null): s is SimState {
+  return !!(
+    s &&
+    s.basket &&
+    s.basket.constituents?.length > 0 &&
+    s.basket.schedule &&
+    s.basket.ledger &&
+    typeof s.basket.clockMs === "number"
+  );
+}
+
 /** Load this tab's existing sim or seed a fresh one and persist it. */
 export function loadOrSeed(scope: SimScope, opts?: SeedOptions): SimState {
   const existing = loadSim(scope);
-  if (existing && existing.basket && existing.basket.constituents.length > 0) {
-    return existing;
-  }
+  if (isValidSim(existing)) return existing;
   const seeded = seedSim(opts);
   saveSim(seeded, scope);
   return seeded;
