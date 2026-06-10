@@ -83,12 +83,22 @@ export interface IndexPoint {
   n: number;
 }
 
+/**
+ * How the launch base value is chosen:
+ *  - "avgPrice": (1/N) Σ priceᵢ — supply-free, equal-weight-consistent, data-driven.
+ *  - "sumPrice": Σ priceᵢ — price-weighted level (Dow-style), supply-free.
+ *  - "fixed":    an arbitrary number (e.g. 1000, PDF Part 5 default).
+ */
+export type BaseValueMode = "avgPrice" | "sumPrice" | "fixed";
+
 export interface Basket {
   id: string;
   name: string;
   weighting: WeightingMode;
-  /** Base value chosen at launch (e.g. 1000) — PDF Part 5. */
+  /** Base value at launch — see baseMode (PDF Part 5). */
   baseValue: number;
+  /** How baseValue was derived at launch. */
+  baseMode: BaseValueMode;
   /**
    * Index value at the last rebaseline. Equal-weight returns are
    * measured relative to this. (Unused by "mcap" mode.)
@@ -371,7 +381,10 @@ function reanchorTo(basket: Basket, v: number): void {
 export interface CreateBasketOptions {
   name: string;
   weighting?: WeightingMode;
+  /** Used when baseValueMode is "fixed" (default 1000). */
   baseValue?: number;
+  /** How to derive the launch value (default "fixed"). */
+  baseValueMode?: BaseValueMode;
   schedule?: Partial<RebalanceSchedule>;
   startMs?: number;
   constituents: Array<{
@@ -389,8 +402,8 @@ export interface CreateBasketOptions {
  *  [5] index value = base value.
  */
 export function createBasket(opts: CreateBasketOptions): Basket {
-  const baseValue = opts.baseValue ?? 1000;
   const weighting = opts.weighting ?? "equal";
+  const baseMode = opts.baseValueMode ?? "fixed";
 
   const constituents: Constituent[] = opts.constituents.map((c) => {
     const config = defaultConfig(c.config);
@@ -405,12 +418,21 @@ export function createBasket(opts: CreateBasketOptions): Basket {
     };
   });
 
+  // Derive the launch base value (supply-free for equal weight; PDF Part 5).
+  const launchPrices = constituents.map((c) => marketPrice(c.market, c.config));
+  const sumPrice = launchPrices.reduce((s, p) => s + p, 0);
+  let baseValue: number;
+  if (baseMode === "avgPrice") baseValue = launchPrices.length ? sumPrice / launchPrices.length : (opts.baseValue ?? 1000);
+  else if (baseMode === "sumPrice") baseValue = sumPrice || (opts.baseValue ?? 1000);
+  else baseValue = opts.baseValue ?? 1000;
+
   const startMs = opts.startMs ?? DEFAULT_START_MS;
   const basket: Basket = {
     id: genBasketId(),
     name: opts.name,
     weighting,
     baseValue,
+    baseMode,
     anchorValue: baseValue,
     divisor: 1, // set below for mcap
     constituents,

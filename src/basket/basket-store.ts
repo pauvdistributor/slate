@@ -21,15 +21,15 @@ import {
   type PauvConfig,
   type PauvState,
 } from "@/market/pauv-engine";
-import { createBasket, type WeightingMode, type RebalanceSchedule } from "./basket-engine";
+import { createBasket, type WeightingMode, type RebalanceSchedule, type BaseValueMode } from "./basket-engine";
 import { createSim, type SimState, type SimMode } from "./simulation";
 import rosterJson from "@/data/roster.json";
 
 // Each UI tab keeps its OWN simulation under a separate key, so trades,
 // category, and history on one tab never affect the other.
 export type SimScope = "index" | "single";
-// v3: added the sim clock, rebalance schedule, and ETF ledger to the basket.
-const STORE_KEY_BASE = "basket_sim_state_v3";
+// v4: base value defaults to the constituents' average price (baseMode).
+const STORE_KEY_BASE = "basket_sim_state_v4";
 function storeKey(scope: SimScope): string {
   return `${STORE_KEY_BASE}:${scope}`;
 }
@@ -108,6 +108,8 @@ export interface SeedOptions {
   category?: string;
   weighting?: WeightingMode;
   baseValue?: number;
+  /** How the launch index value is set (default "avgPrice" — supply-free, data-driven). */
+  baseValueMode?: BaseValueMode;
   schedule?: Partial<RebalanceSchedule>;
   mode?: SimMode;
   /** Simulated start date (ms since epoch). */
@@ -125,6 +127,7 @@ export function seedSim(opts?: SeedOptions): SimState {
     name: category,
     weighting,
     baseValue: opts?.baseValue ?? 1000,
+    baseValueMode: opts?.baseValueMode ?? "avgPrice",
     schedule: opts?.schedule,
     startMs: opts?.startMs,
     constituents: members.map((p) => constituentFromPerson(p, weighting)),
@@ -166,7 +169,8 @@ function isValidSim(s: SimState | null): s is SimState {
     s.basket.constituents?.length > 0 &&
     s.basket.schedule &&
     s.basket.ledger &&
-    typeof s.basket.clockMs === "number"
+    typeof s.basket.clockMs === "number" &&
+    !!s.basket.baseMode
   );
 }
 

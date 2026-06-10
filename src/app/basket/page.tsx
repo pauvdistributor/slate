@@ -30,6 +30,7 @@ import {
   type InvestAllocation,
   type IndexInvestResult,
   type RebalanceSchedule,
+  type BaseValueMode,
 } from "@/basket/basket-engine";
 import {
   botTick,
@@ -79,6 +80,7 @@ interface View {
   dateLabel: string;
   startDateValue: string;
   nextRebalanceLabel: string;
+  baseMode: BaseValueMode;
   yourUnits: number;
   yourUnitsValue: number;
   unitsOutstanding: number;
@@ -98,6 +100,7 @@ function deriveView(sim: SimState): View {
     dateLabel: simDateLabel(b.clockMs),
     startDateValue: new Date(b.startMs).toISOString().slice(0, 10),
     nextRebalanceLabel: simDateLabel(nextRebalanceMs(b)),
+    baseMode: b.baseMode,
     yourUnits: b.ledger.holders[YOU] ?? 0,
     yourUnitsValue: holderValue(b, YOU),
     unitsOutstanding: b.ledger.unitsOutstanding,
@@ -129,19 +132,25 @@ export default function BasketPage() {
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const reseed = useCallback((category: string, weighting: WeightingMode, startMs?: number) => {
+  // Reseed, preserving any settings not explicitly overridden.
+  const reseed = useCallback((o: {
+    category?: string; weighting?: WeightingMode; startMs?: number; baseValueMode?: BaseValueMode;
+  } = {}) => {
+    const b = simRef.current?.basket;
     resetSim("index");
-    const sim = seedSim({ category, weighting, startMs });
+    const sim = seedSim({
+      category: o.category ?? b?.name,
+      weighting: o.weighting ?? b?.weighting,
+      startMs: o.startMs ?? b?.startMs,
+      baseValueMode: o.baseValueMode ?? b?.baseMode,
+    });
     simRef.current = sim;
     saveSim(sim, "index");
     setView(deriveView(sim));
   }, []);
 
-  const onSetStartDate = useCallback((ms: number) => {
-    const b = simRef.current?.basket;
-    if (!b) return;
-    reseed(b.name, b.weighting, ms);
-  }, [reseed]);
+  const onSetStartDate = useCallback((ms: number) => reseed({ startMs: ms }), [reseed]);
+  const onSetBaseMode = useCallback((m: BaseValueMode) => reseed({ baseValueMode: m }), [reseed]);
 
   const onTick = useCallback(() => {
     if (!simRef.current) return;
@@ -212,7 +221,7 @@ export default function BasketPage() {
     const sim = simRef.current;
     if (!sim) return;
     if (!window.confirm("Restart the simulation? This clears all trades, positions, and history.")) return;
-    reseed(sim.basket.name, sim.basket.weighting);
+    reseed({});
   }, [reseed]);
 
   const closeAll = useCallback(() => {
@@ -250,7 +259,7 @@ export default function BasketPage() {
 
   const {
     summary, value, rows, portfolios, history, weighting, memberIds,
-    schedule, dateLabel, startDateValue, nextRebalanceLabel, yourUnits, yourUnitsValue, unitsOutstanding,
+    schedule, dateLabel, startDateValue, nextRebalanceLabel, baseMode, yourUnits, yourUnitsValue, unitsOutstanding,
   } = view;
   const totalReturn = summary.totalReturn;
   const available = allPeople().filter((p) => !memberIds.has(p.ticker));
@@ -292,7 +301,7 @@ export default function BasketPage() {
                   <span className="text-[10px] uppercase tracking-wide text-zinc-500">Category</span>
                   <select
                     value={summary.name}
-                    onChange={(e) => reseed(e.target.value, weighting)}
+                    onChange={(e) => reseed({ category: e.target.value })}
                     className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-2 py-1 max-w-[160px]"
                     title="Switching category reseeds the simulation"
                   >
@@ -305,7 +314,7 @@ export default function BasketPage() {
                   <span className="text-[10px] uppercase tracking-wide text-zinc-500">Weighting</span>
                   <select
                     value={weighting}
-                    onChange={(e) => reseed(summary.name, e.target.value as WeightingMode)}
+                    onChange={(e) => reseed({ weighting: e.target.value as WeightingMode })}
                     className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-2 py-1"
                   >
                     <option value="equal">Equal (Pauv)</option>
@@ -328,9 +337,12 @@ export default function BasketPage() {
               startDateValue={startDateValue}
               nextRebalanceLabel={nextRebalanceLabel}
               schedule={schedule}
+              baseMode={baseMode}
+              baseValue={summary.baseValue}
               onAdvanceDays={onAdvanceDays}
               onSetSchedule={onSetSchedule}
               onSetStartDate={onSetStartDate}
+              onSetBaseMode={onSetBaseMode}
             />
 
             {/* Index value hero */}

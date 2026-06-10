@@ -25,6 +25,7 @@ import {
   type InvestResult,
   type InvestAllocation,
   type RebalanceSchedule,
+  type BaseValueMode,
 } from "@/basket/basket-engine";
 import {
   botTick,
@@ -54,6 +55,8 @@ interface View {
   dateLabel: string;
   startDateValue: string;
   nextRebalanceLabel: string;
+  baseMode: BaseValueMode;
+  baseValue: number;
   yourUnitsValue: number;
 }
 
@@ -70,6 +73,8 @@ function deriveView(sim: SimState): View {
     dateLabel: simDateLabel(b.clockMs),
     startDateValue: new Date(b.startMs).toISOString().slice(0, 10),
     nextRebalanceLabel: simDateLabel(nextRebalanceMs(b)),
+    baseMode: b.baseMode,
+    baseValue: b.baseValue,
     yourUnitsValue: holderValue(b, YOU),
   };
 }
@@ -104,9 +109,18 @@ export default function SinglePage() {
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const reseed = useCallback((category: string, weighting: WeightingMode, startMs?: number) => {
+  const reseed = useCallback((o: {
+    category?: string; weighting?: WeightingMode; startMs?: number; baseValueMode?: BaseValueMode;
+  } = {}) => {
+    const b = simRef.current?.basket;
     resetSim("single");
-    const sim = seedSim({ category, weighting, mode: "single", startMs });
+    const sim = seedSim({
+      category: o.category ?? b?.name,
+      weighting: o.weighting ?? b?.weighting,
+      startMs: o.startMs ?? b?.startMs,
+      baseValueMode: o.baseValueMode ?? b?.baseMode,
+      mode: "single",
+    });
     simRef.current = sim;
     saveSim(sim, "single");
     setLastResult(null);
@@ -114,11 +128,8 @@ export default function SinglePage() {
     setView(deriveView(sim));
   }, []);
 
-  const onSetStartDate = useCallback((ms: number) => {
-    const b = simRef.current?.basket;
-    if (!b) return;
-    reseed(b.name, b.weighting, ms);
-  }, [reseed]);
+  const onSetStartDate = useCallback((ms: number) => reseed({ startMs: ms }), [reseed]);
+  const onSetBaseMode = useCallback((m: BaseValueMode) => reseed({ baseValueMode: m }), [reseed]);
 
   const onTick = useCallback(() => {
     if (!simRef.current) return;
@@ -195,7 +206,7 @@ export default function SinglePage() {
     );
   }
 
-  const { summary, value, rows, history, portfolios, schedule, dateLabel, startDateValue, nextRebalanceLabel, yourUnitsValue } = view;
+  const { summary, value, rows, history, portfolios, schedule, dateLabel, startDateValue, nextRebalanceLabel, baseMode, baseValue, yourUnitsValue } = view;
   const selectedRow = rows.find((r) => r.id === selected);
   const primaryName = selectedRow?.name ?? "person";
 
@@ -248,7 +259,7 @@ export default function SinglePage() {
                 <span className="text-[10px] uppercase tracking-wide text-zinc-500">Category</span>
                 <select
                   value={summary.name}
-                  onChange={(e) => reseed(e.target.value, view.weighting)}
+                  onChange={(e) => reseed({ category: e.target.value })}
                   className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-2 py-1 max-w-[160px]"
                   title="Switching category reseeds this tab's simulation"
                 >
@@ -265,9 +276,12 @@ export default function SinglePage() {
               startDateValue={startDateValue}
               nextRebalanceLabel={nextRebalanceLabel}
               schedule={schedule}
+              baseMode={baseMode}
+              baseValue={baseValue}
               onAdvanceDays={onAdvanceDays}
               onSetSchedule={onSetSchedule}
               onSetStartDate={onSetStartDate}
+              onSetBaseMode={onSetBaseMode}
             />
 
             <div className="grid md:grid-cols-2 gap-4">

@@ -35,6 +35,9 @@ mcap formula yields the anchored value.
 | Operation | Rule | PDF |
 |---|---|---|
 | `createBasket` | record each launch price as baseline; equal: `anchorValue = baseValue`; mcap: `divisor = ΣmarketCap / baseValue`; value == `baseValue`. | Part 7 launch |
+
+**Base value (`baseMode`).** The launch level. Per the doc the equal-weight base is *arbitrary* (the level is meaningless; supply is intentionally dropped), so the only supply-based formula (`Σ price×supply / divisor`) is unavailable. Supply-free options: `avgPrice` = `(1/N)Σ priceᵢ` (equal-weight-consistent, the default in `seedSim`), `sumPrice` = `Σ priceᵢ` (price-weighted), or `fixed` (e.g. 1000). Movement always uses the equal-weight return formula afterward.
+
 | `recordTick` | append the current index value to `history`. Pure trades move the value; no re-anchoring. | Part 7 normal trading |
 | `rebalance` | re-anchor to the **current** value; reset every baseline to current price. Value is unchanged at the instant of rebalance; return clocks reset to 0 → weights re-equalize. | Part 6 |
 | `addConstituent` | **snapshot value first**, append the newcomer (baseline = its current price), then re-anchor to the snapshot. Value continuous (no jump). | Part 7 composition change |

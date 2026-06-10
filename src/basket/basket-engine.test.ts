@@ -79,6 +79,38 @@ describe("PDF Part 7 — launch", () => {
   });
 });
 
+describe("base value modes (supply-free, data-driven launch)", () => {
+  it("avgPrice launches at the average constituent price (no supply)", () => {
+    const b = createBasket({
+      name: "Avg", baseValueMode: "avgPrice",
+      constituents: [
+        { id: "A", name: "A", market: marketAtPrice(10), config: { ...CFG } },
+        { id: "B", name: "B", market: marketAtPrice(20), config: { ...CFG } },
+        { id: "C", name: "C", market: marketAtPrice(30), config: { ...CFG } },
+      ],
+    });
+    expect(b.baseValue).toBeCloseTo(20, 4); // (10+20+30)/3
+    expect(indexValue(b)).toBeCloseTo(20, 4);
+    expect(b.baseMode).toBe("avgPrice");
+  });
+
+  it("sumPrice launches at the total of constituent prices", () => {
+    const b = createBasket({
+      name: "Sum", baseValueMode: "sumPrice",
+      constituents: [
+        { id: "A", name: "A", market: marketAtPrice(10), config: { ...CFG } },
+        { id: "B", name: "B", market: marketAtPrice(20), config: { ...CFG } },
+      ],
+    });
+    expect(b.baseValue).toBeCloseTo(30, 4);
+  });
+
+  it("fixed keeps the chosen arbitrary number", () => {
+    const b = createBasket({ name: "Fix", baseValueMode: "fixed", baseValue: 1000, constituents: fivePeople() });
+    expect(b.baseValue).toBe(1000);
+  });
+});
+
 describe("PDF Part 3/4 — returns & equal weighting", () => {
   it("return_i = price/baseline − 1", () => {
     const b = createBasket({ name: "R", constituents: fivePeople() });

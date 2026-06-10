@@ -1,6 +1,6 @@
 "use client";
 
-import type { RebalanceSchedule, RebalanceFrequency } from "@/basket/basket-engine";
+import type { RebalanceSchedule, RebalanceFrequency, BaseValueMode } from "@/basket/basket-engine";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -13,19 +13,26 @@ export default function SimControls({
   startDateValue,
   nextRebalanceLabel,
   schedule,
+  baseMode,
+  baseValue,
   onAdvanceDays,
   onSetSchedule,
   onSetStartDate,
+  onSetBaseMode,
 }: {
   dateLabel: string;
   /** Start date as YYYY-MM-DD for the date input. */
   startDateValue: string;
   nextRebalanceLabel: string;
   schedule: RebalanceSchedule;
+  baseMode: BaseValueMode;
+  baseValue: number;
   onAdvanceDays: (n: number) => void;
   onSetSchedule: (p: Partial<RebalanceSchedule>) => void;
   /** Pick a new start date (ms, UTC midnight). Reseeds the sim from that date. */
   onSetStartDate: (ms: number) => void;
+  /** Pick how the launch index value is set. Reseeds the sim. */
+  onSetBaseMode: (m: BaseValueMode) => void;
 }) {
   return (
     <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-3 mb-4 flex items-center gap-x-5 gap-y-2 flex-wrap text-xs">
@@ -90,6 +97,21 @@ export default function SimControls({
       <div className="flex items-center gap-2 text-zinc-500">
         <span className="text-[10px] uppercase tracking-wide">Next</span>
         <span className="text-amber-300 tabular-nums">{nextRebalanceLabel}</span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wide text-zinc-500">Base value</span>
+        <select
+          value={baseMode}
+          onChange={(e) => onSetBaseMode(e.target.value as BaseValueMode)}
+          title="How the launch index value is set (supply-free for equal weight)"
+          className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-1.5 py-1"
+        >
+          <option value="avgPrice">Avg price (ΣP/N)</option>
+          <option value="sumPrice">Total price (ΣP)</option>
+          <option value="fixed">Fixed 1000</option>
+        </select>
+        <span className="text-zinc-400 tabular-nums">= {baseValue.toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
       </div>
     </div>
   );
