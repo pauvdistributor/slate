@@ -11,39 +11,52 @@
 // testing of the API surface, not durable storage.
 // ============================================================
 
-import type { Basket } from "@/basket/basket-engine";
-import { seedSim } from "@/basket/basket-store";
-import type { SimState } from "@/basket/simulation";
+import type { Slate } from "@/slate/slate-engine";
+import { seedSim } from "@/slate/slate-store";
+import type { SimState } from "@/slate/simulation";
 
-const baskets = new Map<string, SimState>();
+const slates = new Map<string, SimState>();
 
-/** Ensure at least one demo basket exists; return it. */
+/** Ensure at least one demo slate exists; return it. */
 export function getDefaultSim(): SimState {
-  if (baskets.size === 0) {
+  if (slates.size === 0) {
     const sim = seedSim();
-    baskets.set(sim.basket.id, sim);
+    slates.set(sim.slate.id, sim);
   }
-  return baskets.values().next().value as SimState;
+  return slates.values().next().value as SimState;
 }
 
 export function getSim(id: string): SimState | undefined {
-  return baskets.get(id);
+  return slates.get(id);
 }
 
-export function listBaskets(): Basket[] {
-  return [...baskets.values()].map((s) => s.basket);
+export function listSlates(): Slate[] {
+  return [...slates.values()].map((s) => s.slate);
+}
+
+export function listSims(): SimState[] {
+  return [...slates.values()];
+}
+
+/** Find the slate holding a given constituent (person market). */
+export function findSimByConstituent(
+  constituentId: string,
+): SimState | undefined {
+  return [...slates.values()].find((s) =>
+    s.slate.constituents.some((c) => c.id === constituentId),
+  );
 }
 
 export function putSim(sim: SimState): void {
-  baskets.set(sim.basket.id, sim);
+  slates.set(sim.slate.id, sim);
 }
 
 export function createSeeded(opts?: Parameters<typeof seedSim>[0]): SimState {
   const sim = seedSim(opts);
-  baskets.set(sim.basket.id, sim);
+  slates.set(sim.slate.id, sim);
   return sim;
 }
 
 export function deleteSim(id: string): boolean {
-  return baskets.delete(id);
+  return slates.delete(id);
 }

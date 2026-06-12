@@ -1,7 +1,7 @@
 # Index Implementation (source brief)
 
 > Transcription of the original `index implementation.pdf` that this simulation
-> implements. The basket engine (`src/basket/basket-engine.ts`) and its tests
+> implements. The slate engine (`src/slate/slate-engine.ts`) and its tests
 > map directly to the parts below.
 
 ## Part One

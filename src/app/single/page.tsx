@@ -1,147 +1,185 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import IndexChart from "@/components/IndexChart";
-import InfoTooltip from "@/components/InfoTooltip";
+import { useCallback, useMemo, useRef, useState } from "react";
+import SlateChart from "@/components/SlateChart";
 import Nav from "@/components/Nav";
 import FlowBreakdown, { type FlowLeg } from "@/components/FlowBreakdown";
 import SimControls from "@/components/SimControls";
-import BasketSimSidebar from "@/components/BasketSimSidebar";
+import SlateSimSidebar from "@/components/SlateSimSidebar";
+import PersonSearch from "@/components/PersonSearch";
+import PersonPricePanel from "@/components/PersonPricePanel";
 import {
-  indexValue,
+  slateValue,
   summarize,
   snapshotConstituents,
   investInPerson,
+  previewInvestment,
   holderValue,
   advanceTime,
   setSchedule,
   nextRebalanceMs,
   simDateLabel,
+  getConstituent,
+  personPriceHistory,
+  personOrders,
+  shortPerson,
+  closePersonPosition,
+  totalFeesPaid,
   DAY_MS,
-  type WeightingMode,
-  type BasketSummary,
+  DIRECT_FEE_RATE,
+  type Slate,
+  type SlateSummary,
   type ConstituentSnapshot,
-  type IndexPoint,
+  type SlatePoint,
   type InvestResult,
   type InvestAllocation,
   type RebalanceSchedule,
-  type BaseValueMode,
-} from "@/basket/basket-engine";
+  type PersonPricePoint,
+  type PersonOrder,
+} from "@/slate/slate-engine";
+import { shortViabilityCheck } from "@/market/pauv-engine";
+import PersonOrderLog from "@/components/PersonOrderLog";
 import {
   botTick,
   botPortfolios,
   closeAllPositions,
   type SimState,
   type BotPortfolio,
-} from "@/basket/simulation";
+} from "@/slate/simulation";
 import {
   loadOrSeed,
   saveSim,
   resetSim,
   seedSim,
-  listCategories,
-} from "@/basket/basket-store";
+  getSlatePrice,
+  getFeesEnabled,
+  allPeople,
+  type RosterPerson,
+} from "@/slate/slate-store";
+import Link from "next/link";
 
 const YOU = "you";
 
 interface View {
-  summary: BasketSummary;
+  /** The live slate behind this view (refreshed snapshots key off view identity). */
+  slate: Slate;
+  summary: SlateSummary;
   value: number;
   rows: ConstituentSnapshot[];
-  history: IndexPoint[];
-  weighting: WeightingMode;
+  history: SlatePoint[];
   portfolios: BotPortfolio[];
   schedule: RebalanceSchedule;
   dateLabel: string;
   startDateValue: string;
   nextRebalanceLabel: string;
-  baseMode: BaseValueMode;
   baseValue: number;
   yourUnitsValue: number;
+  feesPaid: number;
 }
 
 function deriveView(sim: SimState): View {
-  const b = sim.basket;
+  const b = sim.slate;
   return {
+    slate: b,
     summary: summarize(b),
-    value: indexValue(b),
+    value: slateValue(b),
     rows: snapshotConstituents(b),
     history: b.history.slice(),
-    weighting: b.weighting,
     portfolios: botPortfolios(sim),
     schedule: b.schedule,
     dateLabel: simDateLabel(b.clockMs),
     startDateValue: new Date(b.startMs).toISOString().slice(0, 10),
     nextRebalanceLabel: simDateLabel(nextRebalanceMs(b)),
-    baseMode: b.baseMode,
     baseValue: b.baseValue,
     yourUnitsValue: holderValue(b, YOU),
+    feesPaid: totalFeesPaid(b),
   };
+}
+
+/** The live direct-leg fee rate, honoring the Nav toggle. */
+function activeFeeRate(): number {
+  return getFeesEnabled() ? DIRECT_FEE_RATE : 0;
 }
 
 function fmtUSD(n: number, d = 2): string {
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
+type TradeMsg = { kind: "ok" | "err"; text: string };
+
 export default function SinglePage() {
   const simRef = useRef<SimState | null>(null);
+  const [selected, setSelected] = useState<RosterPerson | null>(null);
   const [view, setView] = useState<View | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [person, setPerson] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [amount, setAmount] = useState("1000");
   const [primary, setPrimary] = useState("95");
   const [lastResult, setLastResult] = useState<InvestResult | null>(null);
-
-  const categories = useMemo(() => listCategories(), []);
+  const [tradeMsg, setTradeMsg] = useState<TradeMsg | null>(null);
+  // Person whose slate has no initial value yet — trading on them is blocked.
+  const [blocked, setBlocked] = useState<RosterPerson | null>(null);
 
   const refresh = useCallback(() => {
     const sim = simRef.current;
     if (!sim) return;
-    saveSim(sim, "single");
+    // The slate is named after its category — also the storage sub-key.
+    saveSim(sim, "single", sim.slate.name);
     setView(deriveView(sim));
   }, []);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    const sim = loadOrSeed("single", { mode: "single" });
+  // Look up a person: load (or seed) their category's sim and focus them.
+  // Blocked until their slate's initial value is set (Set the Slates page).
+  const onPick = useCallback((p: RosterPerson) => {
+    if (getSlatePrice(p.category) == null) {
+      simRef.current = null;
+      setSelected(null);
+      setView(null);
+      setBlocked(p);
+      return;
+    }
+    setBlocked(null);
+    let sim = loadOrSeed("single", { category: p.category, mode: "single" }, p.category);
+    if (!getConstituent(sim.slate, p.ticker)) {
+      // Stale sim from an older roster — reseed so the person exists.
+      resetSim("single", p.category);
+      sim = loadOrSeed("single", { category: p.category, mode: "single" }, p.category);
+    }
     simRef.current = sim;
+    setSelected(p);
+    setLastResult(null);
+    setTradeMsg(null);
     setView(deriveView(sim));
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
+  // Reseed the current category, preserving settings not overridden.
   const reseed = useCallback((o: {
-    category?: string; weighting?: WeightingMode; startMs?: number; baseValueMode?: BaseValueMode;
+    startMs?: number;
   } = {}) => {
-    const b = simRef.current?.basket;
-    resetSim("single");
+    const cat = selected?.category;
+    if (!cat) return;
+    const b = simRef.current?.slate;
+    resetSim("single", cat);
     const sim = seedSim({
-      category: o.category ?? b?.name,
-      weighting: o.weighting ?? b?.weighting,
+      category: cat,
       startMs: o.startMs ?? b?.startMs,
-      baseValueMode: o.baseValueMode ?? b?.baseMode,
       mode: "single",
     });
     simRef.current = sim;
-    saveSim(sim, "single");
+    saveSim(sim, "single", cat);
     setLastResult(null);
-    setPerson("");
+    setTradeMsg(null);
     setView(deriveView(sim));
-  }, []);
+  }, [selected]);
 
   const onSetStartDate = useCallback((ms: number) => reseed({ startMs: ms }), [reseed]);
-  const onSetBaseMode = useCallback((m: BaseValueMode) => reseed({ baseValueMode: m }), [reseed]);
-
-  const doRestart = useCallback(() => {
-    if (!simRef.current) return;
-    if (!window.confirm("Restart the simulation? This clears all invests, holdings, and history.")) return;
-    reseed({});
-  }, [reseed]);
 
   const onTick = useCallback(() => {
-    if (!simRef.current) return;
-    botTick(simRef.current);
+    if (!simRef.current || !selected) return;
+    simRef.current.config.feeRate = activeFeeRate();
+    // Bots trade only the profile currently being viewed.
+    botTick(simRef.current, undefined, selected.ticker);
     refresh();
-  }, [refresh]);
+  }, [refresh, selected]);
 
   const onConfig = useCallback((c: { bias?: number; minTrade?: number; maxTrade?: number }) => {
     if (!simRef.current) return;
@@ -150,89 +188,215 @@ export default function SinglePage() {
 
   const onCloseAll = useCallback(() => {
     if (!simRef.current) return;
+    simRef.current.config.feeRate = activeFeeRate();
     closeAllPositions(simRef.current);
     refresh();
   }, [refresh]);
 
   const onAdvanceDays = useCallback((n: number) => {
     if (!simRef.current) return;
-    advanceTime(simRef.current.basket, n * DAY_MS);
+    advanceTime(simRef.current.slate, n * DAY_MS);
     refresh();
   }, [refresh]);
 
   const onSetSchedule = useCallback((p: Partial<RebalanceSchedule>) => {
     if (!simRef.current) return;
-    setSchedule(simRef.current.basket, p);
+    setSchedule(simRef.current.slate, p);
     refresh();
   }, [refresh]);
 
   const amt = parseFloat(amount) || 0;
   const primaryPct = Math.min(100, Math.max(0, parseFloat(primary) || 0)) / 100;
+  const selectedId = selected?.ticker ?? "";
 
-  const members = useMemo(() => view?.rows ?? [], [view]);
-  const n = members.length;
-  const selected =
-    person && members.some((m) => m.id === person)
-      ? person
-      : members.find((m) => m.id === "lebron")?.id ?? members[0]?.id ?? "";
+  // ---- trading ----
 
-  // Live preview: 95% direct to person, 5% equal-weight across all members.
-  const previewAllocs: InvestAllocation[] = useMemo(() => {
-    if (!selected || amt <= 0 || n === 0) return [];
-    const primaryAmt = amt * primaryPct;
-    const perMember = (amt * (1 - primaryPct)) / n;
-    return members.map((m) => {
-      const isPrimary = m.id === selected;
-      const indexAmount = perMember;
-      const primaryAmount = isPrimary ? primaryAmt : 0;
-      const a = indexAmount + primaryAmount;
-      return {
-        id: m.id, name: m.name, amount: a, primaryAmount, indexAmount,
-        pct: a / amt, isPrimary, tokens: 0, priceBefore: m.price, priceAfter: m.price,
-      };
-    });
-  }, [selected, amt, primaryPct, n, members]);
-
-  const effectivePrimary = n > 0 ? primaryPct + (1 - primaryPct) / n : primaryPct;
-
-  const doInvest = useCallback(() => {
+  const doLong = useCallback(() => {
     const sim = simRef.current;
-    if (!sim || !selected || amt <= 0) return;
-    const res = investInPerson(sim.basket, selected, amt, { primaryPct, investorId: YOU });
-    setLastResult(res);
-    refresh();
-  }, [selected, amt, primaryPct, refresh]);
+    if (!sim || !selectedId || amt <= 0) return;
+    try {
+      const res = investInPerson(sim.slate, selectedId, amt, { primaryPct, investorId: YOU, feeRate: activeFeeRate() });
+      const a = res.allocations.find((x) => x.isPrimary);
+      setLastResult(res);
+      setTradeMsg({
+        kind: "ok",
+        text: `Long ${fmtUSD(amt)} — price ${fmtUSD(a?.priceBefore ?? 0)} → ${fmtUSD(a?.priceAfter ?? 0)}`,
+      });
+      refresh();
+    } catch (e) {
+      setTradeMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    }
+  }, [selectedId, amt, primaryPct, refresh]);
 
-  if (!view) {
+  const doShort = useCallback(() => {
+    const sim = simRef.current;
+    if (!sim || !selectedId || amt <= 0) return;
+    const directStake = amt * primaryPct;
+    // Same viability gate DTM4.1 runs before opening a short, applied to the
+    // direct leg: blocked → refuse, limited → warn and confirm.
+    const person = getConstituent(sim.slate, selectedId);
+    if (person && directStake > 0) {
+      const viability = shortViabilityCheck(directStake, person.market.Q, person.config);
+      if (viability.zone === "blocked") {
+        setTradeMsg({
+          kind: "err",
+          text:
+            `Cannot open this short. At the current price of ${fmtUSD(viability.currentPrice)}, ` +
+            `the maximum winnings possible (even pushing price to floor) is ` +
+            `~${fmtUSD(viability.maxWinningsFloor)}. Your direct stake of ${fmtUSD(directStake)} exceeds this. ` +
+            `Reduce stake to under ${fmtUSD(viability.maxWinningsFloor)} or wait for the price to rise.`,
+        });
+        return;
+      }
+      if (viability.zone === "limited") {
+        const ok = window.confirm(
+          `Limited-upside short: realistic winnings (price −50%) are ~${fmtUSD(viability.maxWinnings50pct)} ` +
+          `against ~${fmtUSD(viability.lossAtLiquidation)} lost if liquidated ` +
+          `(ratio ${viability.trueRatio.toFixed(1)}×). Open anyway?`,
+        );
+        if (!ok) return;
+      }
+    }
+    try {
+      const res = shortPerson(sim.slate, selectedId, amt, { investorId: YOU, primaryPct, feeRate: activeFeeRate() });
+      setLastResult(null);
+      setTradeMsg({
+        kind: "ok",
+        text:
+          `Short ${fmtUSD(amt)} — ${fmtUSD(directStake)} direct on ${selected?.name ?? "person"}` +
+          (res.slateShortCount > 0
+            ? `, ${fmtUSD(res.slateAmount)} spread as shorts across ${res.slateShortCount} slate members`
+            : "") +
+          ` — price ${fmtUSD(res.priceBefore)} → ${fmtUSD(res.priceAfter)}`,
+      });
+      refresh();
+    } catch (e) {
+      setTradeMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    }
+  }, [selectedId, selected, amt, primaryPct, refresh]);
+
+  const doClosePosition = useCallback((positionId: string) => {
+    const sim = simRef.current;
+    if (!sim || !selectedId) return;
+    try {
+      const res = closePersonPosition(sim.slate, selectedId, positionId, { feeRate: activeFeeRate() });
+      const slateNote = res.closedSlateLegs > 0
+        ? ` (${fmtUSD(res.directProceeds)} direct + ${fmtUSD(res.slateProceeds)} from ${res.closedSlateLegs} slate leg${res.closedSlateLegs === 1 ? "" : "s"})`
+        : "";
+      const failNote = res.failedSlateLegs > 0
+        ? ` — ${res.failedSlateLegs} slate leg(s) could not close yet and stay open`
+        : "";
+      setTradeMsg({ kind: "ok", text: `Position closed — ${fmtUSD(res.proceeds)} returned${slateNote}${failNote}` });
+      refresh();
+    } catch (e) {
+      setTradeMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    }
+  }, [selectedId, refresh]);
+
+  // ---- derived ----
+
+  const row = view?.rows.find((r) => r.id === selectedId);
+
+  // These key off `view` identity: every mutation goes through refresh(),
+  // which derives a fresh view, so the snapshots below recompute then.
+  const points = useMemo<PersonPricePoint[]>(() => {
+    const b = view?.slate;
+    if (!b || !selectedId) return [];
+    const c = getConstituent(b, selectedId);
+    return c ? personPriceHistory(c) : [];
+  }, [view, selectedId]);
+
+  // One entry per trade: the direct position combined with its slate leg.
+  const orders = useMemo<PersonOrder[]>(() => {
+    const b = view?.slate;
+    if (!b || !selectedId) return [];
+    return personOrders(b, selectedId, YOU);
+  }, [view, selectedId]);
+
+  const previewAllocs = useMemo<InvestAllocation[]>(() => {
+    const b = view?.slate;
+    if (!b || !selectedId || amt <= 0) return [];
+    return previewInvestment(b, selectedId, amt, primaryPct);
+  }, [view, selectedId, amt, primaryPct]);
+
+  // ---- blank lookup screen ----
+
+  if (!selected || !view) {
+    const top20 = allPeople().slice().sort((a, b) => b.priceUsd - a.priceUsd).slice(0, 20);
     return (
       <div className="flex flex-col h-screen">
         <Nav />
-        <div className="p-8 text-zinc-500">Loading simulation…</div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-xl mx-auto px-6 pt-28 pb-12">
+            <PersonSearch onPick={onPick} autoFocus />
+            {blocked ? (
+              <div className="rounded-lg border border-amber-700/50 bg-amber-950/20 p-4 mt-4 text-center">
+                <div className="text-amber-300 text-sm font-semibold mb-1">Please set the initial slate price</div>
+                <p className="text-xs text-zinc-400 mb-3">
+                  <span className="text-zinc-200 font-medium">{blocked.name}</span> is on the{" "}
+                  <span className="text-zinc-200 font-medium">{blocked.category}</span> slate, which has no
+                  initial value yet. Trading is blocked until you set one.
+                </p>
+                <Link
+                  href="/set-slates"
+                  className="inline-block rounded-md bg-emerald-600 hover:bg-emerald-500 px-4 py-1.5 text-xs font-medium text-white"
+                >
+                  Set the Slates →
+                </Link>
+              </div>
+            ) : (
+              <p className="text-center text-xs text-zinc-600 mt-3">
+                Look someone up to see their price chart and trade long or short.
+              </p>
+            )}
+
+            {/* Top 20 by price */}
+            <div className="mt-8">
+              <h2 className="text-[10px] uppercase tracking-wide text-zinc-500 mb-2">Top 20 by price</h2>
+              <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 overflow-hidden">
+                {top20.map((p, i) => (
+                  <button
+                    key={p.id}
+                    onClick={() => onPick(p)}
+                    className="w-full flex items-center justify-between px-4 py-2 text-left text-sm hover:bg-zinc-800 border-b border-zinc-800/60 last:border-0"
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <span className="text-zinc-600 tabular-nums text-xs w-5 shrink-0">{i + 1}</span>
+                      <span className="text-zinc-200 truncate">{p.name}</span>
+                      <span className="text-[10px] uppercase tracking-wide text-zinc-500 shrink-0">{p.category}</span>
+                    </span>
+                    <span className="text-zinc-300 tabular-nums shrink-0 ml-3">{fmtUSD(p.priceUsd)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
-  const { summary, value, rows, history, portfolios, schedule, dateLabel, startDateValue, nextRebalanceLabel, baseMode, baseValue, yourUnitsValue } = view;
-  const selectedRow = rows.find((r) => r.id === selected);
-  const primaryName = selectedRow?.name ?? "person";
+  const { summary, value, history, schedule, dateLabel, startDateValue, nextRebalanceLabel, baseValue, portfolios, yourUnitsValue, feesPaid } = view;
+  const n = summary.n;
+  const effectivePrimary = n > 0 ? primaryPct + (1 - primaryPct) / n : primaryPct;
 
   const previewLegs: FlowLeg[] = [
-    { label: `Direct → ${primaryName}`, amount: amt * primaryPct, tone: "primary" },
-    { label: `Index → all ${n} members`, amount: amt * (1 - primaryPct), tone: "index" },
+    { label: `Direct → ${selected.name}`, amount: amt * primaryPct, tone: "primary" },
+    { label: `Slate → all ${n} members`, amount: amt * (1 - primaryPct), tone: "slate" },
   ];
 
   const resultLegs: FlowLeg[] = lastResult
     ? [
         { label: `Direct → ${lastResult.allocations.find((a) => a.isPrimary)?.name ?? "person"}`, amount: lastResult.amount * lastResult.primaryPct, tone: "primary" },
-        { label: `Index → all members`, amount: lastResult.indexAmount, tone: "index" },
+        { label: `Slate → all members`, amount: lastResult.slateAmount, tone: "slate" },
       ]
     : [];
 
   return (
     <div className="flex flex-col h-screen">
-      <Nav />
+      <Nav onToggleBots={() => setSidebarOpen((v) => !v)} feesPaid={feesPaid} />
       <div className="flex flex-1 overflow-hidden">
-        <BasketSimSidebar
+        <SlateSimSidebar
           open={sidebarOpen}
           onToggle={() => setSidebarOpen((v) => !v)}
           portfolios={portfolios}
@@ -242,118 +406,51 @@ export default function SinglePage() {
         />
 
         <div className="flex-1 overflow-y-auto">
-          {!sidebarOpen && (
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="fixed left-0 top-1/2 -translate-y-1/2 z-10 bg-zinc-800 border border-zinc-700 border-l-0 rounded-r-md px-2 py-3 text-xs text-zinc-300 hover:bg-zinc-700"
-            >
-              ▶ Bots
-            </button>
-          )}
-
           <div className="max-w-4xl mx-auto px-6 py-6">
-            {/* Header */}
-            <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
-              <div>
-                <h1 className="text-xl font-bold text-zinc-100">Invest in a single person</h1>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  {Math.round(primaryPct * 100)}% buys the person directly · {Math.round((1 - primaryPct) * 100)}% buys
-                  index units (deployed across all {summary.n} {summary.name} members). Bots run 95/5 invests.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] uppercase tracking-wide text-zinc-500">Category</span>
-                <select
-                  value={summary.name}
-                  onChange={(e) => reseed({ category: e.target.value })}
-                  className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-2 py-1 max-w-[160px]"
-                  title="Switching category reseeds this tab's simulation"
-                >
-                  {categories.map((c) => (
-                    <option key={c.name} value={c.name}>{c.name} ({c.count})</option>
-                  ))}
-                </select>
-                <button
-                  onClick={doRestart}
-                  className="rounded-md bg-red-700 hover:bg-red-600 px-3 py-1 text-xs font-medium text-white"
-                  title="Wipe all invests, holdings, and history; reseed a fresh basket"
-                >
-                  Restart Sim
-                </button>
-              </div>
+            {/* Lookup stays on top so you can jump to someone else */}
+            <div className="mb-4">
+              <PersonSearch onPick={onPick} />
             </div>
 
-            {/* Simulated calendar */}
-            <SimControls
-              dateLabel={dateLabel}
-              startDateValue={startDateValue}
-              nextRebalanceLabel={nextRebalanceLabel}
-              schedule={schedule}
-              baseMode={baseMode}
-              baseValue={baseValue}
-              onAdvanceDays={onAdvanceDays}
-              onSetSchedule={onSetSchedule}
-              onSetStartDate={onSetStartDate}
-              onSetBaseMode={onSetBaseMode}
+            {/* Price chart + long/short trading */}
+            <PersonPricePanel
+              name={selected.name}
+              category={selected.category}
+              price={row?.price ?? selected.priceUsd}
+              baselinePrice={row?.baselinePrice ?? selected.priceUsd}
+              points={points}
+              amount={amount}
+              onAmount={setAmount}
+              primary={primary}
+              onPrimary={setPrimary}
+              onLong={doLong}
+              onShort={doShort}
+              orders={orders}
+              onClosePosition={doClosePosition}
+              message={tradeMsg}
             />
 
-            <div className="grid md:grid-cols-2 gap-4">
-              {/* Invest form */}
+            {/* Order log — every price-moving event, right under the chart */}
+            <div className="mt-4">
+              <PersonOrderLog points={points} you={YOU} />
+            </div>
+
+            {/* Money flow — everything below the chart */}
+            <div className="mt-4 grid md:grid-cols-2 gap-4">
               <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4">
-                <h2 className="text-sm font-semibold text-zinc-200 mb-3">Invest</h2>
-
-                <label className="block text-[10px] uppercase tracking-wide text-zinc-500 mb-1">Person</label>
-                <select
-                  value={selected}
-                  onChange={(e) => setPerson(e.target.value)}
-                  className="w-full rounded border border-zinc-700 bg-zinc-900 text-sm text-zinc-200 px-2 py-1.5 mb-3"
-                >
-                  {members.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name} — {fmtUSD(m.price, 2)}</option>
-                  ))}
-                </select>
-
-                <div className="flex gap-3 mb-3">
-                  <div className="flex-1">
-                    <label className="block text-[10px] uppercase tracking-wide text-zinc-500 mb-1">Amount (USD)</label>
-                    <input
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      inputMode="decimal"
-                      className="w-full rounded border border-zinc-700 bg-zinc-900 text-sm text-zinc-200 px-2 py-1.5"
-                    />
-                  </div>
-                  <div className="w-24">
-                    <label className="text-[10px] uppercase tracking-wide text-zinc-500 mb-1 flex items-center">
-                      Direct %
-                      <InfoTooltip text="Share that buys the chosen person directly. The remainder buys index units, deployed equally across all members (including the person), so their effective share is a bit higher." />
-                    </label>
-                    <input
-                      value={primary}
-                      onChange={(e) => setPrimary(e.target.value)}
-                      inputMode="decimal"
-                      className="w-full rounded border border-zinc-700 bg-zinc-900 text-sm text-zinc-200 px-2 py-1.5"
-                    />
+                <h2 className="text-sm font-semibold text-zinc-200 mb-3">Where a Buy Long goes</h2>
+                <div className="text-[11px] text-zinc-400 space-y-1">
+                  <div>Direct to {selected.name}: <span className="text-emerald-300">{fmtUSD(amt * primaryPct)}</span></div>
+                  <div>Into slate units: <span className="text-sky-300">{fmtUSD(amt * (1 - primaryPct))}</span></div>
+                  <div>Effective share to {selected.name}: <span className="text-zinc-200 font-medium">{(effectivePrimary * 100).toFixed(2)}%</span></div>
+                  <div>Your slate units value: <span className="text-zinc-200">{fmtUSD(yourUnitsValue)}</span></div>
+                  <div className="text-zinc-500 pt-1">
+                    Shorts split the same way: {Math.round(primaryPct * 100)}% opens an escrow-backed short on{" "}
+                    {selected.name}&apos;s curve, the rest spreads as small shorts across the slate. Closing a
+                    position also unwinds the slate leg it opened.
                   </div>
                 </div>
-
-                <div className="text-[11px] text-zinc-400 mb-3 space-y-0.5">
-                  <div>Direct to {primaryName}: <span className="text-emerald-300">{fmtUSD(amt * primaryPct)}</span></div>
-                  <div>Into index units: <span className="text-sky-300">{fmtUSD(amt * (1 - primaryPct))}</span></div>
-                  <div>Effective share to {primaryName}: <span className="text-zinc-200 font-medium">{(effectivePrimary * 100).toFixed(2)}%</span></div>
-                  <div>Your index units value: <span className="text-zinc-200">{fmtUSD(yourUnitsValue)}</span></div>
-                </div>
-
-                <button
-                  onClick={doInvest}
-                  disabled={!selected || amt <= 0}
-                  className="w-full rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 px-3 py-2 text-sm font-medium text-white"
-                >
-                  Invest {amt > 0 ? fmtUSD(amt) : ""}
-                </button>
               </div>
-
-              {/* Live flow preview */}
               <FlowBreakdown
                 total={amt}
                 legs={previewLegs}
@@ -362,17 +459,16 @@ export default function SinglePage() {
               />
             </div>
 
-            {/* Executed result */}
             {lastResult && (
               <div className="mt-4 space-y-3">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs rounded-lg border border-emerald-700/50 bg-emerald-950/20 p-3">
-                  <Stat label="Index before" value={lastResult.indexBefore.toFixed(2)} />
-                  <Stat label="Index after" value={lastResult.indexAfter.toFixed(2)} accent />
+                  <Stat label="Slate before" value={lastResult.slateBefore.toFixed(2)} />
+                  <Stat label="Slate after" value={lastResult.slateAfter.toFixed(2)} accent />
                   <Stat
                     label={`${lastResult.allocations.find((a) => a.isPrimary)?.name} price`}
                     value={`${fmtUSD(lastResult.allocations.find((a) => a.isPrimary)!.priceBefore)} → ${fmtUSD(lastResult.allocations.find((a) => a.isPrimary)!.priceAfter)}`}
                   />
-                  <Stat label="Index units bought" value={lastResult.units.toFixed(4)} />
+                  <Stat label="Slate units bought" value={lastResult.units.toFixed(4)} />
                 </div>
                 <FlowBreakdown
                   total={lastResult.amount}
@@ -383,22 +479,26 @@ export default function SinglePage() {
               </div>
             )}
 
-            {/* Current value + chart */}
-            <div className="mt-4 mb-2 flex items-end justify-between">
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-zinc-500">{summary.name} Index</div>
-                <div className="text-2xl font-bold text-zinc-100 tabular-nums">
-                  {value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
+            {/* Simulation plumbing */}
+            <h2 className="mt-6 mb-2 text-sm font-semibold text-zinc-200">Simulation — {summary.name} slate</h2>
+            <SimControls
+              dateLabel={dateLabel}
+              startDateValue={startDateValue}
+              nextRebalanceLabel={nextRebalanceLabel}
+              schedule={schedule}
+              baseValue={baseValue}
+              onAdvanceDays={onAdvanceDays}
+              onSetSchedule={onSetSchedule}
+              onSetStartDate={onSetStartDate}
+            />
+
+            <div className="mt-2 mb-2">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-500">{summary.name} Slate</div>
+              <div className="text-2xl font-bold text-zinc-100 tabular-nums">
+                {value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              {selectedRow && (
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wide text-zinc-500">{selectedRow.name}</div>
-                  <div className="text-2xl font-bold text-zinc-100 tabular-nums">{fmtUSD(selectedRow.price)}</div>
-                </div>
-              )}
             </div>
-            <IndexChart history={history} baseValue={summary.baseValue} title={`${summary.name} — Index Value`} />
+            <SlateChart history={history} baseValue={summary.baseValue} title={`${summary.name} — Slate Value`} />
           </div>
         </div>
       </div>

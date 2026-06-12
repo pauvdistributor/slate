@@ -10,9 +10,9 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
-import type { IndexPoint } from "@/basket/basket-engine";
+import type { SlatePoint } from "@/slate/slate-engine";
 
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payload: IndexPoint }[] }) {
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payload: SlatePoint }[] }) {
   if (!active || !payload || !payload.length) return null;
   const pt = payload[0].payload;
   return (
@@ -27,19 +27,19 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payl
   );
 }
 
-export default function IndexChart({
+export default function SlateChart({
   history,
   baseValue,
-  title = "Index Value",
+  title = "Slate Value",
 }: {
-  history: IndexPoint[];
+  history: SlatePoint[];
   baseValue: number;
   title?: string;
 }) {
   if (history.length <= 1) {
     return (
       <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 flex items-center justify-center h-64">
-        <p className="text-zinc-500 text-sm">Run the simulation to see the index move</p>
+        <p className="text-zinc-500 text-sm">Run the simulation to see the slate move</p>
       </div>
     );
   }

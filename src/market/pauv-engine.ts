@@ -8,12 +8,12 @@
 //   DTM4.1 stored ONE market in localStorage (singleton).
 //   Here every operation is a PURE function over an explicit
 //   (state, cfg) pair, so you can run N independent markets at
-//   once — one per index constituent. Operations clone the
+//   once — one per slate constituent. Operations clone the
 //   input state, mutate the clone, and return the new state;
 //   on a thrown rejection the caller simply keeps the old state
 //   (same rollback guarantee DTM4.1 got from "don't save").
 //
-// The basket/index layer (src/basket/basket-engine.ts) reads
+// The slate/slate layer (src/slate/slate-engine.ts) reads
 // each constituent's current price off its own PauvState.
 // ============================================================
 
@@ -296,7 +296,7 @@ export function solveTripPoint(
 }
 
 // ============================================================
-// STATE FACTORIES  (storage is the caller's job — see basket-store.ts)
+// STATE FACTORIES  (storage is the caller's job — see slate-store.ts)
 // ============================================================
 
 export function defaultConfig(overrides?: Partial<PauvConfig>): PauvConfig {
@@ -411,6 +411,46 @@ function computeAllLiveTripQs(
     for (const [id, q] of next) result.set(id, q);
   }
   return result;
+}
+
+// Single-position convenience wrapper. For walks that need every trip Q,
+// call computeAllLiveTripQs directly and reuse the map.
+export function liveTripQ(
+  short: PauvPosition,
+  state: PauvState,
+  cfg: PauvConfig,
+  excludeIds: ReadonlySet<string> = EMPTY_EXCLUDE_SET,
+): number {
+  const escrow = short.escrow ?? 0;
+  if (escrow <= 0 || short.tokens <= 0) return Infinity;
+  const all = computeAllLiveTripQs(state, cfg, excludeIds);
+  const cached = all.get(short.id);
+  if (cached !== undefined) return cached;
+  // Off-map case: candidate not in state.positions yet.
+  const currentPrice = price(state.Q, cfg.P0, cfg.b, cfg.alpha);
+  const effThr = effectiveThreshold(currentPrice, cfg);
+  const Q1 = solveTripPoint(short, cfg, 1.0);
+  const standalone = solveTripPoint(short, cfg, effThr);
+  const nestedIds = new Set<string>();
+  let nestedSum = 0;
+  let grew = true;
+  while (grew) {
+    grew = false;
+    const rangeStart = Q1 - nestedSum;
+    const rangeEnd = Q1 + short.tokens;
+    for (const [otherId, otherTripQ] of all) {
+      if (otherId === short.id) continue;
+      if (nestedIds.has(otherId)) continue;
+      if (otherTripQ > rangeStart && otherTripQ < rangeEnd) {
+        const otherPos = state.positions[otherId];
+        if (!otherPos) continue;
+        nestedIds.add(otherId);
+        nestedSum += otherPos.tokens;
+        grew = true;
+      }
+    }
+  }
+  return Math.min(standalone, Q1 - nestedSum);
 }
 
 function executeLiquidation(
@@ -572,6 +612,7 @@ function assertReserveSufficiency(
         `[PAUV] ${opLabel}: reserve-sufficiency violated. ` +
         `Short ${pos.id} costToClose=${costToClose} > escrow=${escrow} ` +
         `at Q=${state.Q}. Deficit ${costToClose - escrow}.`;
+      console.error(msg, "\nFull state:", JSON.stringify(state));
       throw new Error(msg);
     }
   }
@@ -645,6 +686,76 @@ export function getTransactionLog(
   if (userId) log = log.filter((tx) => tx.userId === userId);
   if (limit) log = log.slice(0, limit);
   return log;
+}
+
+// A fully closed position, reconstructed from the txLog — the same record
+// DTM4.1's closed-positions table derives in its page. Field semantics match
+// DTM4.1's fee-excluded convention: `paid` is the net USD that entered the
+// curve (amountIn − open fee), `amountOut` is the gross USD that left it
+// (close amountOut + close fee), so realizedPnL measures curve movement only;
+// fees are reported separately.
+export interface ClosedPositionRecord {
+  id: string;
+  type: "long" | "short";
+  userId: string;
+  tokens: number;
+  paid: number;
+  fees: number;
+  amountOut: number;
+  realizedPnL: number;
+  openPrice: number;
+  closePrice: number;
+  closedAt: string;
+  wasLiquidated: boolean;
+}
+
+const OPEN_TX_TYPES = new Set(["buy", "short_open"]);
+const CLOSE_TX_TYPES = new Set(["sell", "short_close", "liquidation"]);
+
+/**
+ * Closed positions for a market, newest first — verbatim DTM4.1 derivation:
+ * pair each positionId's open and close txLog rows, keep pairs whose position
+ * is no longer open. Multi-part closes collapse to the final close row, same
+ * as DTM4.1.
+ */
+export function getClosedPositions(
+  state: PauvState,
+  userId?: string,
+): ClosedPositionRecord[] {
+  const byPos = new Map<string, { open?: PauvTxLog; close?: PauvTxLog }>();
+  for (const tx of state.txLog) {
+    if (OPEN_TX_TYPES.has(tx.type)) {
+      const entry = byPos.get(tx.positionId) ?? {};
+      entry.open = tx;
+      byPos.set(tx.positionId, entry);
+    } else if (CLOSE_TX_TYPES.has(tx.type)) {
+      const entry = byPos.get(tx.positionId) ?? {};
+      entry.close = tx;
+      byPos.set(tx.positionId, entry);
+    }
+  }
+  return Array.from(byPos.entries())
+    .filter(([id, { open, close }]) =>
+      open && close && !state.positions[id] && (!userId || open.userId === userId))
+    .map(([id, { open, close }]) => {
+      const paid = open!.amountIn - open!.fee;
+      const received = close!.amountOut + close!.fee;
+      return {
+        id,
+        type: open!.type === "buy" ? ("long" as const) : ("short" as const),
+        userId: open!.userId,
+        tokens: open!.tokens,
+        paid,
+        fees: open!.fee + close!.fee,
+        amountOut: received,
+        realizedPnL: received - paid,
+        openPrice: open!.priceBefore,
+        closePrice: close!.priceAfter,
+        closedAt: close!.timestamp,
+        wasLiquidated: close!.type === "liquidation",
+      };
+    })
+    .sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
 }
 
 export function getTreasuryBalance(state: PauvState): number {
@@ -1001,12 +1112,80 @@ export function shortClose(
   };
 }
 
+// ---- SHORT VIABILITY ----  (verbatim from DTM4.1)
+// Engine-side helper for the UI viability gate. Separate from the cascade
+// solvency check in shortOpen — this one guards user economic outcomes.
+export interface ShortViability {
+  zone: "healthy" | "limited" | "blocked";
+  currentPrice: number;
+  effectiveThreshold: number;
+  lossAtLiquidation: number;
+  maxWinnings50pct: number;
+  maxWinningsFloor: number;
+  trueRatio: number;
+}
+
+export function shortViabilityCheck(
+  stake: number,
+  currentQ: number,
+  cfg: PauvConfig,
+): ShortViability {
+  const currentPrice = price(currentQ, cfg.P0, cfg.b, cfg.alpha);
+  const effThr = effectiveThreshold(currentPrice, cfg);
+  const lossFrac = Math.max(0, 2 * effThr - 1);
+  const lossAtLiquidation = stake * lossFrac;
+
+  // Q at price = X via numerical inverse of P.
+  const rp0 = rawP0(cfg.P0, cfg.alpha);
+  const invertPrice = (target: number): number => {
+    const r = target / cfg.alpha;
+    const lnExpM1 = r > 40 ? target : cfg.alpha * Math.log(Math.exp(r) - 1);
+    return (lnExpM1 - rp0) / cfg.b;
+  };
+
+  // Realistic upside: cash released by pushing price to 50% of current.
+  const halfPrice = currentPrice * 0.5;
+  const qAtHalf = invertPrice(halfPrice);
+  const maxWinnings50pct = Math.max(
+    0, costIntegral(qAtHalf, currentQ, cfg.P0, cfg.b, cfg.alpha)
+  );
+
+  // Absolute cap: cash from currentQ down to the practical floor
+  // (P=$0.0001 or currentQ − 1e6, whichever comes first).
+  const PRICE_FLOOR = 0.0001;
+  const MAX_DROP = 1_000_000;
+  const minQ = currentQ - MAX_DROP;
+  let qFloor: number;
+  try {
+    const qAtPriceFloor = invertPrice(PRICE_FLOOR);
+    qFloor = Number.isFinite(qAtPriceFloor) && qAtPriceFloor > minQ
+      ? qAtPriceFloor : minQ;
+  } catch { qFloor = minQ; }
+  const maxWinningsFloor = Math.max(
+    0, costIntegral(qFloor, currentQ, cfg.P0, cfg.b, cfg.alpha)
+  );
+
+  const trueRatio = lossAtLiquidation > 0
+    ? maxWinnings50pct / lossAtLiquidation
+    : Infinity;
+
+  let zone: "healthy" | "limited" | "blocked";
+  if (stake > maxWinningsFloor || trueRatio < 1) zone = "blocked";
+  else if (trueRatio < 5) zone = "limited";
+  else zone = "healthy";
+
+  return {
+    zone, currentPrice, effectiveThreshold: effThr,
+    lossAtLiquidation, maxWinnings50pct, maxWinningsFloor, trueRatio,
+  };
+}
+
 // ============================================================
 // RAW POOL TRADES (positionless)
 // ------------------------------------------------------------
-// The index vehicle (ETF) holds an aggregate token balance per constituent,
+// The slate vehicle (ETF) holds an aggregate token balance per constituent,
 // not individual user positions. These helpers move Q and return tokens/
-// proceeds without creating position records, so the basket layer can track
+// proceeds without creating position records, so the slate layer can track
 // the pool's holdings itself. Same math as buy/sell.
 // ============================================================
 

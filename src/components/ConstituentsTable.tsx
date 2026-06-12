@@ -1,6 +1,6 @@
 "use client";
 
-import type { ConstituentSnapshot, WeightingMode } from "@/basket/basket-engine";
+import type { ConstituentSnapshot } from "@/slate/slate-engine";
 
 function pct(n: number): string {
   return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(2)}%`;
@@ -8,11 +8,9 @@ function pct(n: number): string {
 
 export default function ConstituentsTable({
   rows,
-  weighting,
   onRemove,
 }: {
   rows: ConstituentSnapshot[];
-  weighting: WeightingMode;
   onRemove: (id: string) => void;
 }) {
   return (
@@ -24,7 +22,6 @@ export default function ConstituentsTable({
             <th className="text-right font-medium px-3 py-2">Price</th>
             <th className="text-right font-medium px-3 py-2">Baseline</th>
             <th className="text-right font-medium px-3 py-2">Return</th>
-            {weighting === "mcap" && <th className="text-right font-medium px-3 py-2">Mkt Cap</th>}
             <th className="text-right font-medium px-3 py-2">Weight</th>
             <th className="px-3 py-2" />
           </tr>
@@ -38,17 +35,12 @@ export default function ConstituentsTable({
               <td className={`px-3 py-2 text-right tabular-nums ${r.return >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {pct(r.return)}
               </td>
-              {weighting === "mcap" && (
-                <td className="px-3 py-2 text-right text-zinc-400 tabular-nums">
-                  ${r.marketCap.toLocaleString("en-US", { maximumFractionDigits: 0 })}
-                </td>
-              )}
               <td className="px-3 py-2 text-right text-zinc-300 tabular-nums">{(r.weight * 100).toFixed(1)}%</td>
               <td className="px-3 py-2 text-right">
                 <button
                   onClick={() => onRemove(r.id)}
                   className="text-[10px] text-zinc-600 hover:text-red-400 transition-colors"
-                  title="Remove from index"
+                  title="Remove from slate"
                 >
                   remove
                 </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import type { InvestAllocation } from "@/basket/basket-engine";
+import type { InvestAllocation } from "@/slate/slate-engine";
 
 function fmtUSD(n: number, d = 2): string {
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -9,12 +9,12 @@ function fmtUSD(n: number, d = 2): string {
 export interface FlowLeg {
   label: string;
   amount: number;
-  tone: "primary" | "index";
+  tone: "primary" | "slate";
 }
 
 /**
  * Visualizes how an investment's dollars flow:
- *  - a top stacked bar splitting the total into its legs (direct vs index),
+ *  - a top stacked bar splitting the total into its legs (direct vs slate),
  *  - a per-constituent list of bars showing each member's slice and, once
  *    executed, the resulting price move.
  */
@@ -43,11 +43,11 @@ export default function FlowBreakdown({
 
   const toneBar: Record<FlowLeg["tone"], string> = {
     primary: "bg-emerald-500",
-    index: "bg-sky-500",
+    slate: "bg-sky-500",
   };
   const toneText: Record<FlowLeg["tone"], string> = {
     primary: "text-emerald-300",
-    index: "text-sky-300",
+    slate: "text-sky-300",
   };
 
   return (
@@ -97,10 +97,10 @@ export default function FlowBreakdown({
                   )}
                 </span>
               </div>
-              {/* stacked bar: index slice (sky) + primary slice (emerald) */}
+              {/* stacked bar: slate slice (sky) + primary slice (emerald) */}
               <div className="flex w-full h-2 rounded overflow-hidden bg-zinc-800" style={{ maxWidth: `${(a.amount / maxAmt) * 100}%` }}>
-                {a.indexAmount > 0 && (
-                  <div className="bg-sky-500/80 h-full" style={{ width: `${(a.indexAmount / a.amount) * 100}%` }} />
+                {a.slateAmount > 0 && (
+                  <div className="bg-sky-500/80 h-full" style={{ width: `${(a.slateAmount / a.amount) * 100}%` }} />
                 )}
                 {a.primaryAmount > 0 && (
                   <div className="bg-emerald-500 h-full" style={{ width: `${(a.primaryAmount / a.amount) * 100}%` }} />

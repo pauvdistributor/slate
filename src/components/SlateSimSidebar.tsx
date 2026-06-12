@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { BOT_IDS, BOT_STARTING_CASH, type BotPortfolio } from "@/basket/simulation";
+import { BOT_IDS, BOT_STARTING_CASH, type BotPortfolio } from "@/slate/simulation";
 
 const BOT_COLORS: Record<string, string> = {
   "bot-1": "text-rose-400",
@@ -15,7 +15,7 @@ function fmtUSD(n: number): string {
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-export interface BasketSimSidebarProps {
+export interface SlateSimSidebarProps {
   open: boolean;
   onToggle: () => void;
   portfolios: BotPortfolio[];
@@ -26,14 +26,14 @@ export interface BasketSimSidebarProps {
   onCloseAll: () => void;
 }
 
-export default function BasketSimSidebar({
+export default function SlateSimSidebar({
   open,
   onToggle,
   portfolios,
   onTick,
   onConfig,
   onCloseAll,
-}: BasketSimSidebarProps) {
+}: SlateSimSidebarProps) {
   const [running, setRunning] = useState(false);
   const [bias, setBias] = useState(0);
   const [minTrade, setMinTrade] = useState("200");

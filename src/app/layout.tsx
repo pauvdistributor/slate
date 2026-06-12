@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Basket Index Simulation",
-  description: "Equal-weight index over Pauv softplus bonding-curve markets",
+  title: "Slate Simulation",
+  description: "Equal-weight slate over Pauv softplus bonding-curve markets",
 };
 
 export default function RootLayout({
