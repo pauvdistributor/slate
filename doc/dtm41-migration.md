@@ -125,8 +125,8 @@ DTM4.1's fields first and adding index fields after:
 | `GET /api/market`           | every person market: `{ id, name, createdAt, Q, currentPrice, sentimentScore }` + `slateId`, `slateName`        |
 | `POST /api/market`          | add a person market to a slate (value-continuous, PDF Part 7): body `{ id, name, slateId?, seedUsd?, config? }` |
 | `GET /api/market/[id]`      | snapshot + `positions` + `closedPositions` + `priceHistory`                                                     |
-| `POST /api/market/[id]/trade` | open with auto-spread: body `{ userId?, side, amount, primaryPct?, feeRate? }`; long → `investInPerson`, short → `shortPerson` |
-| `POST /api/market/close`    | body `{ marketId, positionId, feeRate? }` → `closePersonPosition` (unwinds the linked slate leg too)            |
+| `POST /api/market/[id]/trade` | open with auto-spread: body `{ userId?, side, amount, primaryPct?, feeRate? }`; long → `investInPerson`, short → `shortPerson`; response carries `cascadeClosures` (§4.5) |
+| `POST /api/market/close`    | body `{ marketId, positionId, feeRate? }` → `closePersonPosition` (unwinds the linked slate leg too); response carries `cascadeClosures` (§4.5) |
 | `GET /api/portfolio/[userId]` | `{ userId, balance, positions, closedPositions }` + the §2 additions                                          |
 | `GET/PUT /api/treasury`     | `{ balance }` = Σ market treasuries (fees only land there) + additive `bySlate`                                 |
 
@@ -134,7 +134,8 @@ Index-only surface (all new in prod):
 
 - `GET/POST /api/slate` — list / create slates.
 - `GET/DELETE /api/slate/[id]` — summary + constituents + history / remove.
-- `POST /api/slate/[id]/invest` — the 95/5 person invest.
+- `POST /api/slate/[id]/invest` — the 95/5 person invest (response carries
+  `cascadeClosures`, §4.5).
 - `POST /api/slate/[id]/rebalance` — re-equalize (PDF Part 6).
 - `POST/DELETE /api/slate/[id]/constituent` — composition changes (Part 7).
 
@@ -162,7 +163,15 @@ slate/market/person), 422 (engine rejection, e.g. `UnderwaterRejection`).
    in prod, one DB transaction.
 5. **Linked legs**: closing a direct position must unwind its slate leg
    (units sold back / member shorts bought back); legs that cannot close stay
-   linked for a later retry (`failedSlateLegs`).
+   linked for a later retry (`failedSlateLegs`). **Liquidation cascades the
+   same way**: a liquidation deletes the parent inside the market walk, so
+   every engine trade op sweeps `linkedLegs` for parents that died by
+   liquidation and auto-unwinds their slate legs (`sweepLiquidatedParents`).
+   The proceeds are reported as `cascadeClosures:
+   [{ parentPositionId, personId, userId, proceeds, closedSlateLegs,
+   failedSlateLegs }]` on every trade/close result and route response — the
+   caller must credit each `userId`'s balance, since the liquidated owner is
+   usually not the account that placed the triggering trade.
 6. **`"slate-pool"` sentinel**: pool flows log under this userId, which is
    how per-person history distinguishes `order` from `slate` flow — never
    assign it to a real account.

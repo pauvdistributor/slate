@@ -15,6 +15,11 @@ function fmtUSD(n: number): string {
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+// Loss/gain at 6 decimals so sub-cent conservation leaks are visible.
+function fmtDelta(n: number): string {
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 6, maximumFractionDigits: 6 });
+}
+
 export interface SlateSimSidebarProps {
   open: boolean;
   onToggle: () => void;
@@ -36,8 +41,8 @@ export default function SlateSimSidebar({
 }: SlateSimSidebarProps) {
   const [running, setRunning] = useState(false);
   const [bias, setBias] = useState(0);
-  const [minTrade, setMinTrade] = useState("200");
-  const [maxTrade, setMaxTrade] = useState("1000");
+  const [minTrade, setMinTrade] = useState("500");
+  const [maxTrade, setMaxTrade] = useState("2000");
   const [intervalMs, setIntervalMs] = useState("400");
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -65,8 +70,8 @@ export default function SlateSimSidebar({
   useEffect(() => {
     onConfig({
       bias: bias / 100,
-      minTrade: parseInt(minTrade) || 200,
-      maxTrade: parseInt(maxTrade) || 1000,
+      minTrade: parseInt(minTrade) || 500,
+      maxTrade: parseInt(maxTrade) || 2000,
     });
   }, [bias, minTrade, maxTrade, onConfig]);
 
@@ -93,8 +98,8 @@ export default function SlateSimSidebar({
             </p>
             <div className="flex items-center justify-between mt-1">
               <span className="text-[10px] text-zinc-500">Started: {fmtUSD(totalStart)}</span>
-              <span className={`text-[10px] font-medium ${totalPortfolio - totalStart >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {totalPortfolio - totalStart >= 0 ? "+" : ""}{fmtUSD(totalPortfolio - totalStart)}
+              <span className={`text-[10px] font-medium tabular-nums ${totalPortfolio - totalStart >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {totalPortfolio - totalStart >= 0 ? "+" : ""}{fmtDelta(totalPortfolio - totalStart)}
               </span>
             </div>
           </div>
@@ -145,8 +150,12 @@ export default function SlateSimSidebar({
               Step
             </button>
           </div>
-          <button onClick={onCloseAll} className="w-full rounded-md bg-amber-700/70 hover:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white mb-4">
-            Close All Positions
+          <button
+            onClick={onCloseAll}
+            className="w-full rounded-md bg-amber-700/70 hover:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white mb-4"
+            title="Close every BOT position (each parent close also unwinds its slate legs). Your own positions are untouched."
+          >
+            Close All Bot Positions
           </button>
 
           {/* Per-bot */}
@@ -156,8 +165,8 @@ export default function SlateSimSidebar({
                 <span className={`text-sm font-bold ${BOT_COLORS[p.botId] ?? "text-zinc-300"}`}>{p.botId}</span>
                 <div className="text-right">
                   <div className="text-xs text-zinc-200">{fmtUSD(p.portfolio)}</div>
-                  <div className={`text-[10px] ${p.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {p.pnl >= 0 ? "+" : ""}{fmtUSD(p.pnl)}
+                  <div className={`text-[10px] tabular-nums ${p.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {p.pnl >= 0 ? "+" : ""}{fmtDelta(p.pnl)}
                   </div>
                 </div>
               </div>

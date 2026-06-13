@@ -14,12 +14,7 @@
 // raw and never buy the slate outright.
 // ============================================================
 
-import {
-  sell,
-  shortClose,
-  getPositions,
-  type PauvPosition,
-} from "@/market/pauv-engine";
+import { getPositions, type PauvPosition } from "@/market/pauv-engine";
 import {
   type Slate,
   type Constituent,
@@ -34,6 +29,7 @@ import {
   holderValue,
   DAY_MS,
   DIRECT_FEE_RATE,
+  type CascadeClosure,
 } from "./slate-engine";
 
 export const BOT_IDS = ["bot-1", "bot-2", "bot-3", "bot-4", "bot-5"] as const;
@@ -68,8 +64,8 @@ export interface SimConfig {
 
 export function defaultSimConfig(overrides?: Partial<SimConfig>): SimConfig {
   return {
-    minTrade: 200,
-    maxTrade: 1000,
+    minTrade: 500,
+    maxTrade: 2000,
     bias: 0,
     closeChance: 0.3,
     autoRebalance: true,
@@ -99,6 +95,24 @@ export interface SimEvent {
   amount?: number;
   slateValue: number;
   note?: string;
+  /**
+   * Slate legs the trade auto-closed because it liquidated their parent
+   * positions. Bot owners are already credited in botCash; callers must
+   * credit any wallet they track elsewhere (e.g. the user's).
+   */
+  cascades?: CascadeClosure[];
+}
+
+/**
+ * Credit cascade proceeds to the bots that own them (other owners — e.g. the
+ * user — are the caller's wallets to credit). Returns the closures untouched
+ * for chaining.
+ */
+export function creditBotCascades(sim: SimState, cascades: CascadeClosure[]): CascadeClosure[] {
+  for (const c of cascades) {
+    if (c.userId in sim.botCash) sim.botCash[c.userId] += c.proceeds;
+  }
+  return cascades;
 }
 
 export function createSim(slate: Slate, config?: Partial<SimConfig>, mode: SimMode = "slate"): SimState {
@@ -116,14 +130,14 @@ function pick<T>(arr: readonly T[]): T {
 }
 
 /**
- * The bot's own DIRECT positions on one person's curve — excludes slate legs
- * (those belong to a direct position and are unwound with it), exactly the
- * list a standard user sees on the profile page.
+ * One account's DIRECT (parent) positions on one person's curve — excludes
+ * slate legs (those belong to a parent position and are unwound with it),
+ * exactly the list a standard user sees on the profile page.
  */
-function botDirectPositions(slate: Slate, person: Constituent, botId: string): PauvPosition[] {
+function directPositions(slate: Slate, person: Constituent, userId: string): PauvPosition[] {
   const legIds = slateLinkedPositionIds(slate, person.id);
   return Object.values(person.market.positions).filter(
-    (p) => p.userId === botId && !legIds.has(p.id),
+    (p) => p.userId === userId && !legIds.has(p.id),
   );
 }
 
@@ -159,16 +173,18 @@ export function botTick(sim: SimState, botId: BotId = pick(BOT_IDS), personId?: 
   }
 
   // Sometimes close an existing position on this person first.
-  const open = botDirectPositions(slate, person, botId);
+  const open = directPositions(slate, person, botId);
   if (open.length > 0 && Math.random() < config.closeChance) {
     const pos = pick(open);
     try {
       const res = closePersonPosition(slate, person.id, pos.id, { feeRate: config.feeRate ?? 0 });
       sim.botCash[botId] += res.proceeds; // direct close + unwound slate legs
+      creditBotCascades(sim, res.cascadeClosures);
       return {
         tick: sim.ticks, botId, action: "close",
         constituentId: person.id, constituentName: person.name, amount: res.proceeds,
         slateValue: slateValue(slate),
+        ...(res.cascadeClosures.length > 0 ? { cascades: res.cascadeClosures } : {}),
       };
     } catch {
       // fall through to opening a new position
@@ -184,16 +200,16 @@ export function botTick(sim: SimState, botId: BotId = pick(BOT_IDS), personId?: 
   const goLong = Math.random() < 0.5 + config.bias * 0.5;
   const opts = { primaryPct: config.primaryPct, investorId: botId, feeRate: config.feeRate ?? 0 };
   try {
-    if (goLong) {
-      investInPerson(slate, person.id, amount, opts);
-    } else {
-      shortPerson(slate, person.id, amount, opts);
-    }
+    const res = goLong
+      ? investInPerson(slate, person.id, amount, opts)
+      : shortPerson(slate, person.id, amount, opts);
     sim.botCash[botId] -= amount;
+    creditBotCascades(sim, res.cascadeClosures);
     return {
       tick: sim.ticks, botId, action: goLong ? "invest" : "short",
       constituentId: person.id, constituentName: person.name, amount,
       slateValue: slateValue(slate),
+      ...(res.cascadeClosures.length > 0 ? { cascades: res.cascadeClosures } : {}),
     };
   } catch (e) {
     return {
@@ -204,44 +220,59 @@ export function botTick(sim: SimState, botId: BotId = pick(BOT_IDS), personId?: 
 }
 
 /**
- * Close every open position across all constituents (any user). Mutates the
- * slate's constituent markets in place. Returns the number of positions closed.
- * Direct positions pay the close fee (config.feeRate); slate legs stay fee-free.
+ * Close every DIRECT (parent) position one account owns across all
+ * constituents, via closePersonPosition — so each close also unwinds the
+ * slate legs that were opened with it (sells the units / closes the linked
+ * shorts). The parent pays the close fee (`feeRate`); slate legs stay
+ * fee-free. Returns the parent count closed and total proceeds (direct +
+ * unwound slate legs), plus any liquidation cascades the closes set off
+ * (short buybacks push prices up) — those proceeds belong to the cascaded
+ * positions' owners, not `userId`, and are NOT in `proceeds`.
  */
-export function closeAllPositions(sim: SimState): number {
-  // Position ids that are slate legs of some direct position — never fee'd.
-  const slateLegIds = new Set<string>();
-  for (const link of Object.values(sim.slate.linkedLegs ?? {})) {
-    for (const s of link.shorts ?? []) slateLegIds.add(s.positionId);
-  }
-
+export function closeAccountPositions(
+  slate: Slate,
+  userId: string,
+  feeRate = 0,
+): { closed: number; proceeds: number; cascades: CascadeClosure[] } {
   let closed = 0;
-  for (const c of sim.slate.constituents) {
-    for (const pos of Object.values(c.market.positions)) {
-      const cfg = slateLegIds.has(pos.id)
-        ? c.config
-        : { ...c.config, feeRate: sim.config.feeRate ?? 0 };
+  let proceeds = 0;
+  const cascades: CascadeClosure[] = [];
+  for (const c of slate.constituents) {
+    for (const pos of directPositions(slate, c, userId)) {
       try {
-        let proceeds: number;
-        if (pos.type === "long") {
-          const res = sell(c.market, cfg, pos.id);
-          c.market = res.state;
-          proceeds = res.netProceeds;
-        } else {
-          const res = shortClose(c.market, cfg, pos.id);
-          c.market = res.state;
-          proceeds = res.netReturn;
-        }
-        // Proceeds go back to the owner's wallet when we track one (bots).
-        if (pos.userId in sim.botCash) sim.botCash[pos.userId] += proceeds;
+        const res = closePersonPosition(slate, c.id, pos.id, { feeRate });
+        proceeds += res.proceeds;
+        cascades.push(...res.cascadeClosures);
         closed++;
       } catch {
         /* skip positions that cannot currently be closed */
       }
     }
   }
-  if (closed > 0) recordTick(sim.slate);
-  return closed;
+  if (closed > 0) recordTick(slate);
+  return { closed, proceeds, cascades };
+}
+
+/**
+ * Close all the BOTS' positions (parents, each unwinding its slate legs).
+ * The user's positions are untouched — unless a close liquidates one; the
+ * returned cascades carry those proceeds for the caller to credit (bot-owned
+ * cascades are already credited here).
+ */
+export function closeAllPositions(sim: SimState): {
+  closed: number;
+  cascades: CascadeClosure[];
+} {
+  let closed = 0;
+  const cascades: CascadeClosure[] = [];
+  for (const botId of BOT_IDS) {
+    const res = closeAccountPositions(sim.slate, botId, sim.config.feeRate ?? 0);
+    sim.botCash[botId] += res.proceeds;
+    closed += res.closed;
+    cascades.push(...res.cascades);
+  }
+  creditBotCascades(sim, cascades);
+  return { closed, cascades };
 }
 
 export interface BotPortfolio {

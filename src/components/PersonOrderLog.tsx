@@ -8,20 +8,29 @@ function fmtUSD(n: number, d?: number): string {
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-const SOURCE_BADGE: Record<PriceMoveSource, { label: string; cls: string }> = {
-  launch: { label: "launch", cls: "bg-zinc-800 text-zinc-400" },
-  order: { label: "order", cls: "bg-emerald-900/60 text-emerald-300" },
-  slate: { label: "slate", cls: "bg-sky-900/60 text-sky-300" },
-  liquidation: { label: "liquidation", cls: "bg-amber-900/60 text-amber-300" },
-};
-
-const EVENT_LABEL: Record<string, string> = {
-  buy: "buy",
-  sell: "sell",
-  short_open: "short open",
-  short_close: "short close",
-  liquidation: "liquidation",
-};
+// Each row decomposed for the log: which side the position is on
+// (long/short), which leg moved the price (a direct order vs the
+// auto-spread slate leg), and what happened to it.
+function describe(p: { event: string; source: PriceMoveSource }): {
+  side: { label: string; cls: string };
+  leg: { label: string; cls: string };
+  action: { label: string; cls: string };
+} {
+  const long = { label: "long", cls: "bg-emerald-900/60 text-emerald-300" };
+  const short = { label: "short", cls: "bg-red-900/60 text-red-300" };
+  const side = p.event === "buy" || p.event === "sell" ? long : short;
+  // A liquidation names no leg — the engine fires it on the curve itself.
+  const leg = p.source === "liquidation"
+    ? { label: "—", cls: "text-zinc-600" }
+    : p.source === "slate"
+    ? { label: "slate", cls: "bg-sky-900/60 text-sky-300" }
+    : { label: "direct", cls: "bg-zinc-800 text-zinc-300" };
+  const action =
+    p.event === "liquidation" ? { label: "liquidated", cls: "text-amber-300" }
+    : p.event === "buy" || p.event === "short_open" ? { label: "open", cls: "text-zinc-300" }
+    : { label: "close", cls: "text-zinc-400" };
+  return { side, leg, action };
+}
 
 const PAGE = 25;
 
@@ -55,8 +64,9 @@ export default function PersonOrderLog({
             <thead>
               <tr className="text-[10px] uppercase tracking-wide text-zinc-500 border-b border-zinc-800">
                 <th className="text-left font-medium py-1.5 pr-2">#</th>
-                <th className="text-left font-medium py-1.5 pr-2">Source</th>
-                <th className="text-left font-medium py-1.5 pr-2">Event</th>
+                <th className="text-left font-medium py-1.5 pr-2">Side</th>
+                <th className="text-left font-medium py-1.5 pr-2">Leg</th>
+                <th className="text-left font-medium py-1.5 pr-2">Action</th>
                 <th className="text-left font-medium py-1.5 pr-2">Who</th>
                 <th className="text-right font-medium py-1.5 pr-2">Amount</th>
                 <th className="text-right font-medium py-1.5">Price</th>
@@ -66,15 +76,21 @@ export default function PersonOrderLog({
               {orders.slice(0, shown).map((p) => {
                 const ret = p.priceBefore && p.priceBefore > 0 ? p.price / p.priceBefore - 1 : 0;
                 const isYou = you != null && p.userId === you;
+                const { side, leg, action } = describe(p);
                 return (
                   <tr key={p.seq} className="border-b border-zinc-800/60 last:border-0">
                     <td className="py-1.5 pr-2 text-zinc-600 tabular-nums">{p.seq}</td>
                     <td className="py-1.5 pr-2">
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${SOURCE_BADGE[p.source].cls}`}>
-                        {SOURCE_BADGE[p.source].label}
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${side.cls}`}>
+                        {side.label}
                       </span>
                     </td>
-                    <td className="py-1.5 pr-2 text-zinc-300">{EVENT_LABEL[p.event] ?? p.event}</td>
+                    <td className="py-1.5 pr-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${leg.cls}`}>
+                        {leg.label}
+                      </span>
+                    </td>
+                    <td className={`py-1.5 pr-2 ${action.cls}`}>{action.label}</td>
                     <td className={`py-1.5 pr-2 ${isYou ? "text-emerald-300 font-medium" : "text-zinc-500"}`}>
                       {p.source === "slate" ? "slate pool" : p.userId ?? "—"}
                     </td>

@@ -21,9 +21,11 @@ the contract.
   prices. Nothing about an individual market changes.
 - **The slate is never directly tradeable.** There is no "buy the index"
   button, endpoint, or export. Money reaches the slate pool exactly one way —
-  the **auto-spread** of a person order: `primaryPct` (default 95%) trades the
-  person directly (a normal DTM4.1 position), and the remainder (5%) spreads
-  across all members, minting **slate units** to the investor. Closing the
+  the **auto-spread** of a person order: `primaryPct` (default 95%; the UI
+  lets the user adjust it down to the 70/30 floor or toggle auto-spread off
+  for 100% direct) trades the person directly (a normal DTM4.1 position), and
+  the remainder spreads across all members, minting **slate units** to the
+  investor. Closing the
   direct position unwinds its slate leg with it (linked legs). Shorts mirror
   the same split with small member shorts instead of units.
 - **The slate value is pure read-math** over member prices (equal weight, no
@@ -44,7 +46,12 @@ the contract.
 
 - **The engine** — [`src/market/pauv-engine.ts`](src/market/pauv-engine.ts):
   softplus price/cost integral, escrow shorting, walked liquidation cascades,
-  fee-excluded P&L. The math is identical function-by-function; the only
+  fee-excluded P&L. That includes the cascade-aware **short-open guards**: an
+  open is rejected when it would fire an *underfunded* liquidation cascade
+  (buyback cost > escrow), when too many existing shorts would nest into its
+  buyback (effective liquidation threshold below the 0.30 minimum), and the
+  UI's viability gate (`shortViabilityCheck`) warns on limited-upside shorts
+  before opening. The math is identical function-by-function; the only
   change is that operations are **pure** — `buy(state, cfg, …) → { state, … }`
   instead of DTM4.1's localStorage singleton — so N markets can coexist. In
   prod that means: state is the market's DB rows, one transaction per op, and
@@ -72,6 +79,13 @@ the contract.
     displayed number never jumps on a non-market event);
   - `investInPerson` / `shortPerson` / `closePersonPosition` — the 95/5
     auto-spread and its linked-leg unwind (the **only** trading entry points);
+  - the **liquidation-cascade sweep**: a buy (or a close's short buyback) can
+    push the price up and auto-liquidate open shorts. A normal close unwinds
+    its slate leg itself, but a liquidation deletes the parent without that
+    hook — so after every trade the engine sweeps for orphaned links and
+    unwinds their slate legs too, looping because each buyback can liquidate
+    further parents. Every trade result reports these as `cascadeClosures`
+    (owner, proceeds, legs closed) so the caller can credit the right wallet;
   - the ledger (units outstanding, holders, pool tokens) and linked legs;
   - read views: portfolio (DTM4.1's `{ userId, balance, positions,
     closedPositions }` contract + slate holdings), per-person closed
@@ -106,8 +120,13 @@ Slate-only surface (all new in prod):
 | `POST /api/slate/[id]/rebalance` | re-equalize weights (PDF Part 6) |
 | `POST /api/slate/[id]/constituent` · `DELETE ?cid=` | add / remove a member (PDF Part 7) |
 
+Trade, close, and invest responses include `cascadeClosures` — slate legs the
+operation auto-unwound because it liquidated their parent positions (each
+entry names the owner and the proceeds to credit them).
+
 Errors everywhere: `{ error }` with `400` (bad input), `404` (unknown
-slate/market), `422` (engine rejection, e.g. underwater-liquidation guard).
+slate/market), `422` (engine rejection — e.g. the underfunded-cascade or
+stacked-shorts short-open guards).
 
 ```bash
 ID=$(curl -s localhost:3000/api/market | python -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
@@ -125,7 +144,7 @@ swap its get/put for DB calls and the engine usage is unchanged.
 
 ```bash
 npm install
-npm test       # 57 tests: engine math, PDF worked examples, linked legs, portfolio
+npm test       # 63 tests: engine math, PDF worked examples, linked legs, portfolio, slate coverage
 npm run sim    # headless bot simulation, prints the slate trajectory
 npm run dev    # web UI at http://localhost:3000 → redirects to /slate
 ```
@@ -141,24 +160,47 @@ Flags: `--ticks`, `--bias -1..1`, `--mode slate|single`, `--days-per-tick`,
 
 ## The demo app
 
-- **`/set-slates`** — the creator sets each category slate's **initial
-  value**. Trading pages stay blocked until a slate has one.
-- **`/slate`** — the index tab: slate value + return since launch, the
-  simulated calendar (each tick advances sim time; scheduled rebalances fire
-  at their true dates — weekly on Fridays by default), value chart with
-  rebalance/add/remove markers, constituents table with inline add/remove,
-  and the bots sidebar.
-- **`/single`** — one person: search, price panel and order log (direct
-  orders vs. slate flows tagged separately), the 95/5 invest with a direct-%
-  input, and your combined orders (direct leg + slate leg per position).
+- **The 14 launch slates** — every Pauv profile belongs to exactly **one**
+  slate. Profiles carry a free-form subcategory ("Rapper", "Twitch", "Vice
+  President", …); [`src/slate/slates.ts`](src/slate/slates.ts) rolls those up
+  into the launch taxonomy (Football (Soccer), Basketball, Racing, American
+  Football, Tennis, Bodybuilding, Martial Arts, Golf, Business, Politics,
+  Film and TV, Influencers, Music, Comedy), with per-ticker overrides for
+  edge cases.
+  `slates.test.ts` fails the build if a roster pull introduces an unmapped
+  subcategory.
+- **One shared simulation per slate.** The Slate and Single tabs trade the
+  SAME world (localStorage keyed by slate name): an order placed on the
+  Single tab moves the Slate tab's chart, and vice versa. Each tab remembers
+  what you were viewing — its slate, your looked-up person — across jumps.
+- **`/set-slates`** — the creator sets each slate's **initial value**.
+  Trading pages stay blocked until a slate has one.
+- **`/slate`** — the index tab: slate search, slate value + return since
+  launch, the simulated calendar (each tick advances sim time; scheduled
+  rebalances fire at their true dates — weekly on Fridays by default), value
+  chart with rebalance/add/remove markers, constituents table with inline
+  add/remove, and the bots sidebar.
+- **`/single`** — one person: search, price panel, the auto-spread invest
+  (default 95% direct / 5% slate; the direct share is user-adjustable down to
+  the **70/30 floor**, or auto-spread can be toggled **off** for a 100%
+  direct order), your combined orders (direct leg + slate leg per position),
+  and the order log — every price-moving event tagged **Side**
+  (long/short), **Leg** (direct/slate), and **Action**
+  (open/close/liquidated).
+- **Your $10M wallet** sits in the Nav as a conservation harness: every open
+  debits it, every close — including slate legs auto-closed when one of your
+  shorts gets liquidated — credits it back, and the drift vs. $10M is shown
+  to 6 decimals. After closing everything, any drift beyond fees and
+  liquidation losses is an engine leak.
 - **Bots** trade person orders only — never the slate — over the simulated
-  calendar. The Nav fees toggle applies `DIRECT_FEE_RATE` to direct legs.
+  calendar ($500–$2,000 per position by default). "Close All Bot Positions"
+  closes only the bots' **parent** positions (each unwinding its slate legs);
+  your positions stay open. The Nav fees toggle applies `DIRECT_FEE_RATE` to
+  direct legs; Restart Sim wipes every slate and refills the wallet.
 - **Roster**: constituents seed from a committed snapshot of the real Pauv
-  roster ([`src/data/roster.json`](src/data/roster.json)), grouped by
-  category. Re-pull with `SUPABASE_URL=… SUPABASE_ANON_KEY=… npm run
-  refresh-roster` (read-only anon key; also reads `.env`).
-- Each tab is its own simulation (separate localStorage state), mirroring
-  DTM4.1's storage style.
+  roster ([`src/data/roster.json`](src/data/roster.json)) — people, prices,
+  and subcategories. Re-pull with `npm run refresh-roster` (read-only anon
+  key from env or this repo's `.env`).
 
 ## Layout
 
@@ -169,15 +211,17 @@ src/
   market/closed-positions.test.ts# DTM4.1 ClosedPositionRecord guarantees
   slate/slate-engine.ts          # the index layer — START HERE
   slate/slate-engine.test.ts     # PDF worked examples
-  slate/linked-legs.test.ts      # auto-spread + unwind + fee conventions
+  slate/linked-legs.test.ts      # auto-spread + unwind + cascades + fee conventions
   slate/portfolio.test.ts        # portfolio contract
+  slate/slates.ts                # the 14 launch slates (subcategory → slate roll-up)
+  slate/slates.test.ts           # every roster person maps to exactly one slate
   slate/simulation.ts            # bot logic (UI + CLI)
-  slate/slate-store.ts           # localStorage + roster seeding
+  slate/slate-store.ts           # localStorage (shared sim per slate) + roster seeding + wallet
   server/slate-server-store.ts   # in-memory store behind the API (→ DB)
   data/roster.json               # real Pauv roster snapshot
-  components/                    # Nav, SlateChart, ConstituentsTable, SimControls,
-                                 # SlateSimSidebar, Person{Search,PricePanel,OrderLog},
-                                 # FlowBreakdown, InfoTooltip
+  components/                    # Nav, SlateChart, SlateSearch, ConstituentsTable,
+                                 # SimControls, SlateSimSidebar, FlowBreakdown,
+                                 # Person{Search,PricePanel,OrderLog}, InfoTooltip
   app/slate/page.tsx             # Index tab
   app/single/page.tsx            # Single-person (95/5) tab
   app/set-slates/page.tsx        # creator sets initial slate values

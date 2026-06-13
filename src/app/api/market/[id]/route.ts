@@ -26,6 +26,6 @@ export async function GET(
     ...getMarket(c.market, c.config), // Q, currentPrice, sentimentScore
     positions: getPositions(c.market, c.config),
     closedPositions: getClosedPositions(c.market),
-    priceHistory: personPriceHistory(c),
+    priceHistory: personPriceHistory(c, sim.slate),
   });
 }

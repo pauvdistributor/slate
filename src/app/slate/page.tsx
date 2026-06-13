@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import SlateChart from "@/components/SlateChart";
 import ConstituentsTable from "@/components/ConstituentsTable";
@@ -8,6 +8,7 @@ import SlateSimSidebar from "@/components/SlateSimSidebar";
 import InfoTooltip from "@/components/InfoTooltip";
 import Nav from "@/components/Nav";
 import SimControls from "@/components/SimControls";
+import SlateSearch from "@/components/SlateSearch";
 import {
   slateValue,
   summarize,
@@ -26,26 +27,30 @@ import {
   type ConstituentSnapshot,
   type SlatePoint,
   type RebalanceSchedule,
+  type CascadeClosure,
 } from "@/slate/slate-engine";
 import {
   botTick,
   botPortfolios,
   closeAllPositions,
+  closeAccountPositions,
   type SimState,
   type BotPortfolio,
 } from "@/slate/simulation";
 import {
   loadOrSeed,
-  loadSim,
   saveSim,
   resetSim,
   seedSim,
-  listCategories,
   allPeople,
   findPerson,
   constituentFromPerson,
   getSlatePrice,
   getFeesEnabled,
+  getLastViewedSlate,
+  setLastViewedSlate,
+  adjustWallet,
+  USER_ID,
   DEFAULT_CATEGORY,
 } from "@/slate/slate-store";
 
@@ -61,6 +66,17 @@ interface View {
   startDateValue: string;
   nextRebalanceLabel: string;
   feesPaid: number;
+}
+
+/**
+ * Credit YOUR share of liquidation cascades to the wallet — bot owners are
+ * credited inside the sim layer (botTick / closeAllPositions).
+ */
+function settleYourCascades(cascades: CascadeClosure[] | undefined): void {
+  const mine = (cascades ?? [])
+    .filter((c) => c.userId === USER_ID)
+    .reduce((s, c) => s + c.proceeds, 0);
+  if (mine > 0) adjustWallet(mine);
 }
 
 function deriveView(sim: SimState): View {
@@ -88,50 +104,54 @@ export default function SlatePage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [addId, setAddId] = useState("");
 
-  const categories = useMemo(() => listCategories(), []);
-
   const refresh = useCallback((persist = true) => {
     const sim = simRef.current;
     if (!sim) return;
-    if (persist) saveSim(sim, "slate");
+    if (persist) saveSim(sim);
     setView(deriveView(sim));
   }, []);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    // Block until this slate's initial value has been set (Set the Slates page).
-    const cat = loadSim("slate")?.slate?.name ?? DEFAULT_CATEGORY;
-    if (getSlatePrice(cat) == null) {
-      setBlockedCat(cat);
-      return;
-    }
-    const sim = loadOrSeed("slate", { category: cat });
-    simRef.current = sim;
-    setView(deriveView(sim));
-  }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Reseed, preserving any settings not explicitly overridden. Blocks (without
-  // touching the existing sim) if the target slate has no initial value yet.
-  const reseed = useCallback((o: {
-    category?: string; startMs?: number;
-  } = {}) => {
-    const b = simRef.current?.slate;
-    const category = o.category ?? b?.name ?? DEFAULT_CATEGORY;
+  // Show a slate: load its SHARED sim (the same world the Single tab trades
+  // in, so its orders show up here) or seed one. Blocks if the slate has no
+  // creator-set initial value yet.
+  const switchTo = useCallback((category: string) => {
+    setLastViewedSlate(category);
     if (getSlatePrice(category) == null) {
       simRef.current = null;
       setView(null);
       setBlockedCat(category);
       return;
     }
-    resetSim("slate");
+    const sim = loadOrSeed(category);
+    simRef.current = sim;
+    setBlockedCat(null);
+    setView(deriveView(sim));
+  }, []);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    // Restore the slate you were last looking at (kept even when blocked).
+    // localStorage is only readable client-side, hence the effect.
+    switchTo(getLastViewedSlate() ?? DEFAULT_CATEGORY);
+  }, [switchTo]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Restart the CURRENT slate's sim from scratch (also wipes what the Single
+  // tab did to it — same world), preserving settings not overridden.
+  const reseed = useCallback((o: { startMs?: number } = {}) => {
+    const b = simRef.current?.slate;
+    if (!b) return;
+    // Cash YOUR positions out first so the wipe doesn't strand wallet money.
+    const { proceeds, cascades } = closeAccountPositions(b, USER_ID, getFeesEnabled() ? DIRECT_FEE_RATE : 0);
+    if (proceeds) adjustWallet(proceeds);
+    settleYourCascades(cascades);
+    resetSim(b.name);
     const sim = seedSim({
-      category,
-      startMs: o.startMs ?? b?.startMs,
+      category: b.name,
+      startMs: o.startMs ?? b.startMs,
     });
     simRef.current = sim;
-    saveSim(sim, "slate");
-    setBlockedCat(null);
+    saveSim(sim);
     setView(deriveView(sim));
   }, []);
 
@@ -141,7 +161,10 @@ export default function SlatePage() {
     if (!simRef.current) return;
     // Bot invests pay the direct-leg fee, honoring the Nav toggle.
     simRef.current.config.feeRate = getFeesEnabled() ? DIRECT_FEE_RATE : 0;
-    botTick(simRef.current);
+    const ev = botTick(simRef.current);
+    // A bot trade can liquidate YOUR parent short; its slate leg auto-closes
+    // and the proceeds belong in your wallet (bots are credited in botTick).
+    settleYourCascades(ev.cascades);
     refresh();
   }, [refresh]);
 
@@ -187,7 +210,10 @@ export default function SlatePage() {
   const closeAll = useCallback(() => {
     if (!simRef.current) return;
     simRef.current.config.feeRate = getFeesEnabled() ? DIRECT_FEE_RATE : 0;
-    closeAllPositions(simRef.current);
+    // Bots only — YOUR positions stay open (close them from the Single tab),
+    // though a buyback can liquidate one; that cascade is yours to pocket.
+    const { cascades } = closeAllPositions(simRef.current);
+    settleYourCascades(cascades);
     refresh();
   }, [refresh]);
 
@@ -214,16 +240,7 @@ export default function SlatePage() {
               </div>
               <div className="mt-4 text-xs text-zinc-500 flex items-center justify-center gap-2">
                 <span>Or switch to another slate:</span>
-                <select
-                  value=""
-                  onChange={(e) => { if (e.target.value) reseed({ category: e.target.value }); }}
-                  className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-2 py-1 max-w-[180px]"
-                >
-                  <option value="">Pick a category…</option>
-                  {categories.map((c) => (
-                    <option key={c.name} value={c.name}>{c.name} ({c.count})</option>
-                  ))}
-                </select>
+                <SlateSearch onPick={switchTo} className="w-56 text-left" />
               </div>
             </div>
           </div>
@@ -269,18 +286,12 @@ export default function SlatePage() {
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] uppercase tracking-wide text-zinc-500">Category</span>
-                  <select
-                    value={summary.name}
-                    onChange={(e) => reseed({ category: e.target.value })}
-                    className="rounded border border-zinc-700 bg-zinc-900 text-xs text-zinc-200 px-2 py-1 max-w-[160px]"
-                    title="Switching category reseeds the simulation"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.name} value={c.name}>{c.name} ({c.count})</option>
-                    ))}
-                  </select>
+                <div
+                  className="flex items-center gap-1.5"
+                  title="Switching slates keeps each slate's simulation — including orders placed on the Single tab"
+                >
+                  <span className="text-[10px] uppercase tracking-wide text-zinc-500">Slate</span>
+                  <SlateSearch onPick={switchTo} className="w-56" />
                 </div>
               </div>
             </div>
@@ -353,7 +364,7 @@ export default function SlatePage() {
 
             <p className="text-[10px] text-zinc-600 mt-4">
               Adding or removing a constituent re-anchors the slate so the value does not jump (PDF Part 7).
-              Switch categories above to reseed from the real Pauv roster.
+              Orders placed on the Single tab trade this same slate, so they show up in the chart above.
             </p>
           </div>
         </div>

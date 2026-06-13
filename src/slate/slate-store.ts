@@ -6,8 +6,11 @@
 // is the only place that touches localStorage.
 //
 // Constituents are seeded from the REAL Pauv roster snapshot in
-// src/data/roster.json (people grouped by category, with their
-// current prices). Re-pull it with `npm run refresh-roster`.
+// src/data/roster.json (people with their current prices). Re-pull
+// it with `npm run refresh-roster`. Each person's free-form Pauv
+// subcategory is rolled up into exactly one launch SLATE (see
+// slates.ts); `category` on a RosterPerson is the slate name, the
+// raw subcategory is kept in `subcategory`.
 //
 // For a real backend, swap this out for the same pure engine
 // calls against a database. See src/app/api/* for a server-side
@@ -22,25 +25,34 @@ import {
 } from "@/market/pauv-engine";
 import { createSlate, type RebalanceSchedule } from "./slate-engine";
 import { createSim, type SimState, type SimMode } from "./simulation";
+import { SLATE_NAMES, slateFor } from "./slates";
 import rosterJson from "@/data/roster.json";
 
-// Each UI tab keeps its OWN simulation under a separate key, so trades,
-// category, and history on one tab never affect the other.
-export type SimScope = "slate" | "single";
+// ONE simulation per slate, keyed by slate name and SHARED by both tabs:
+// an order placed on the Single tab moves the same world the Slate tab
+// charts, and vice versa.
 // v6: equal weighting only (the "price" mode and its divisor were removed).
-const STORE_KEY_BASE = "slate_sim_state_v6";
-// `sub` namespaces multiple sims within one scope — the Single tab keeps one
-// sim per category, so looking up someone new never wipes another category's
-// trades and history.
-function storeKey(scope: SimScope, sub?: string): string {
-  return sub ? `${STORE_KEY_BASE}:${scope}:${sub}` : `${STORE_KEY_BASE}:${scope}`;
+// v7: categories became launch slates (13 roll-ups of raw subcategories),
+//     so old sims reference compositions that no longer exist.
+// v8: per-slate keys replaced the per-tab ("slate"/"single") split that
+//     kept each tab in its own parallel world.
+// v9: Golf split out of Influencers into its own slate, so persisted
+//     Influencers sims carry a stale roster.
+// v10: slates gained the slateLegIds registry that tags short slate legs
+//      in the order log; older sims would mis-tag them as direct.
+const STORE_KEY_BASE = "slate_sim_state_v10";
+function storeKey(category: string): string {
+  return `${STORE_KEY_BASE}:${category}`;
 }
 
 export interface RosterPerson {
   id: string;
   ticker: string;
   name: string;
+  /** The launch slate this person belongs to (e.g. "Music"). */
   category: string;
+  /** The raw Pauv subcategory (e.g. "Rapper"). */
+  subcategory: string;
   priceUsd: number;
   p0Usd: number | null;
   holders: number;
@@ -56,7 +68,27 @@ interface Roster {
   people: RosterPerson[];
 }
 
-const roster = rosterJson as Roster;
+// roster.json's `category` is the raw subcategory; roll it up into the
+// person's slate. An unmapped subcategory surfaces as its own slate
+// (visible in the UI, person stays tradeable) — slates.test.ts fails
+// until it's added to slates.ts.
+const roster: Roster = (() => {
+  const raw = rosterJson as Omit<Roster, "people"> & {
+    people: Array<Omit<RosterPerson, "subcategory">>;
+  };
+  const people: RosterPerson[] = raw.people.map((p) => ({
+    ...p,
+    category: slateFor(p.category, p.ticker) ?? p.category,
+    subcategory: p.category,
+  }));
+  const counts = new Map<string, number>();
+  for (const p of people) counts.set(p.category, (counts.get(p.category) ?? 0) + 1);
+  const categories = [
+    ...SLATE_NAMES.filter((s) => counts.has(s)),
+    ...[...counts.keys()].filter((c) => !SLATE_NAMES.includes(c as never)),
+  ].map((name) => ({ name, count: counts.get(name)! }));
+  return { fetchedAt: raw.fetchedAt, source: raw.source, categories, people };
+})();
 
 /** Category to seed by default — Pauv's "Basketball" is the NBA-All-Stars analog. */
 export const DEFAULT_CATEGORY =
@@ -153,6 +185,113 @@ export function setAllSlatePrices(value: number): void {
 }
 
 // ------------------------------------------------------------
+// Last-viewed selection (per tab)
+// ------------------------------------------------------------
+// Each tab remembers what you were looking at — the Single tab its
+// person, the Slate tab its slate — so jumping between tabs (or
+// reloading) brings the same view back up.
+
+const LAST_VIEWED_KEY = "last_viewed_v1";
+
+interface LastViewed {
+  /** Ticker of the person focused on the Single tab. */
+  single?: string;
+  /** Slate (category) active on the Slate tab. */
+  slate?: string;
+}
+
+function getLastViewed(): LastViewed {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(LAST_VIEWED_KEY) ?? "{}") as LastViewed;
+  } catch {
+    return {};
+  }
+}
+
+function patchLastViewed(patch: LastViewed): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(LAST_VIEWED_KEY, JSON.stringify({ ...getLastViewed(), ...patch }));
+  } catch { /* non-fatal */ }
+}
+
+export function getLastViewedPerson(): string | null {
+  return getLastViewed().single ?? null;
+}
+export function setLastViewedPerson(ticker: string): void {
+  patchLastViewed({ single: ticker });
+}
+export function getLastViewedSlate(): string | null {
+  return getLastViewed().slate ?? null;
+}
+export function setLastViewedSlate(category: string): void {
+  patchLastViewed({ slate: category });
+}
+
+// ------------------------------------------------------------
+// Your wallet
+// ------------------------------------------------------------
+// You start with $10M. Every open debits it and every close credits the
+// proceeds back, so after closing everything the drift from $10M is
+// exactly fees paid (when on) plus liquidation losses — anything else
+// is a conservation leak in the engine.
+
+/** The human investor's account id on positions (bots are bot-1…bot-5). */
+export const USER_ID = "you";
+
+export const WALLET_STARTING_CASH = 10_000_000;
+const WALLET_KEY = "user_wallet_v1";
+const WALLET_EVENT = "wallet-changed";
+
+export function getWallet(): number {
+  if (typeof window === "undefined") return WALLET_STARTING_CASH;
+  try {
+    const raw = localStorage.getItem(WALLET_KEY);
+    if (raw == null) return WALLET_STARTING_CASH;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : WALLET_STARTING_CASH;
+  } catch {
+    return WALLET_STARTING_CASH;
+  }
+}
+
+function setWallet(value: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(WALLET_KEY, String(value));
+  } catch { /* non-fatal */ }
+  window.dispatchEvent(new Event(WALLET_EVENT));
+}
+
+/** Debit (delta < 0) or credit (delta > 0) the wallet. Returns the new balance. */
+export function adjustWallet(delta: number): number {
+  const next = getWallet() + delta;
+  setWallet(next);
+  return next;
+}
+
+export function resetWallet(): void {
+  setWallet(WALLET_STARTING_CASH);
+}
+
+/**
+ * Notify on wallet changes — same-tab writes (custom event) and other
+ * browser tabs (storage event). Returns the unsubscribe function.
+ */
+export function onWalletChange(cb: () => void): () => void {
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === WALLET_KEY) cb();
+  };
+  window.addEventListener(WALLET_EVENT, cb);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(WALLET_EVENT, cb);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+// ------------------------------------------------------------
 // Fees toggle
 // ------------------------------------------------------------
 // Global on/off for the direct-leg fee (DIRECT_FEE_RATE). Read at
@@ -204,10 +343,10 @@ export function seedSim(opts?: SeedOptions): SimState {
   return createSim(slate, undefined, opts?.mode ?? "slate");
 }
 
-export function loadSim(scope: SimScope, sub?: string): SimState | null {
+export function loadSim(category: string): SimState | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(storeKey(scope, sub));
+    const raw = localStorage.getItem(storeKey(category));
     if (!raw) return null;
     return JSON.parse(raw) as SimState;
   } catch {
@@ -215,18 +354,19 @@ export function loadSim(scope: SimScope, sub?: string): SimState | null {
   }
 }
 
-export function saveSim(sim: SimState, scope: SimScope, sub?: string): void {
+/** Persist a sim under its slate's key (the slate is named after its category). */
+export function saveSim(sim: SimState): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(storeKey(scope, sub), JSON.stringify(sim));
+    localStorage.setItem(storeKey(sim.slate.name), JSON.stringify(sim));
   } catch {
     /* quota / serialization errors are non-fatal for a sim */
   }
 }
 
-export function resetSim(scope: SimScope, sub?: string): void {
+export function resetSim(category: string): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(storeKey(scope, sub));
+  localStorage.removeItem(storeKey(category));
 }
 
 /**
@@ -258,11 +398,11 @@ function isValidSim(s: SimState | null): s is SimState {
   );
 }
 
-/** Load this tab's existing sim or seed a fresh one and persist it. */
-export function loadOrSeed(scope: SimScope, opts?: SeedOptions, sub?: string): SimState {
-  const existing = loadSim(scope, sub);
+/** Load the slate's existing sim or seed a fresh one and persist it. */
+export function loadOrSeed(category: string, opts?: Omit<SeedOptions, "category">): SimState {
+  const existing = loadSim(category);
   if (isValidSim(existing)) return existing;
-  const seeded = seedSim(opts);
-  saveSim(seeded, scope, sub);
+  const seeded = seedSim({ ...opts, category });
+  saveSim(seeded);
   return seeded;
 }

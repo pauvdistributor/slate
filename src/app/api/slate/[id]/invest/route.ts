@@ -40,6 +40,7 @@ export async function POST(
       slateBefore: res.slateBefore,
       slateAfter: res.slateAfter,
       allocations: res.allocations,
+      cascadeClosures: res.cascadeClosures,
     });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 422 });

@@ -47,6 +47,7 @@ export async function POST(
         slateAmount: res.slateAmount,
         units: res.units,
         allocations: res.allocations,
+        cascadeClosures: res.cascadeClosures,
         slateValue: res.slateAfter,
       });
     }
@@ -62,6 +63,7 @@ export async function POST(
         primaryPct: res.primaryPct,
         slateAmount: res.slateAmount,
         slateShortCount: res.slateShortCount,
+        cascadeClosures: res.cascadeClosures,
         slateValue: res.slateAfter,
       });
     }

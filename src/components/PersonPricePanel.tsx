@@ -65,6 +65,9 @@ export interface PersonPanelProps {
   onAmount: (v: string) => void;
   primary: string;
   onPrimary: (v: string) => void;
+  /** Auto-spread on/off — off trades 100% direct (no slate leg). */
+  spreadOn: boolean;
+  onSpreadToggle: (on: boolean) => void;
   onLong: () => void;
   onShort: () => void;
   /** One entry per trade: the direct position combined with its slate leg. */
@@ -89,6 +92,8 @@ export default function PersonPricePanel({
   onAmount,
   primary,
   onPrimary,
+  spreadOn,
+  onSpreadToggle,
   onLong,
   onShort,
   orders,
@@ -152,15 +157,32 @@ export default function PersonPricePanel({
               />
             </div>
             <div>
+              <label className="block text-[10px] uppercase tracking-wide text-zinc-500 mb-1">Auto-spread</label>
+              <button
+                onClick={() => onSpreadToggle(!spreadOn)}
+                className={`rounded border px-2 py-1.5 text-sm font-medium ${
+                  spreadOn
+                    ? "bg-sky-900/40 border-sky-700 text-sky-300 hover:bg-sky-900/60"
+                    : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:bg-zinc-700"
+                }`}
+                title="On: part of every order spreads across the slate. Off: the whole order trades the person directly (100/0)."
+              >
+                {spreadOn ? "On" : "Off"}
+              </button>
+            </div>
+            <div>
               <label className="text-[10px] uppercase tracking-wide text-zinc-500 mb-1 flex items-center">
                 Direct %
-                <InfoTooltip text="This share trades the person directly; the remainder spreads across the slate — a long buys slate units, a short opens small shorts on every member. Closing the direct position unwinds its slate leg too." />
+                <InfoTooltip text="This share trades the person directly; the remainder spreads across the slate — a long buys slate units, a short opens small shorts on every member. Closing the direct position unwinds its slate leg too. 70 minimum (the 70/30 floor); toggle auto-spread off for 100% direct." />
               </label>
               <input
-                value={primary}
+                value={spreadOn ? primary : "100"}
                 onChange={(e) => onPrimary(e.target.value)}
+                onBlur={() => onPrimary(String(Math.min(100, Math.max(70, parseFloat(primary) || 95))))}
+                disabled={!spreadOn}
                 inputMode="decimal"
-                className="w-16 rounded border border-zinc-700 bg-zinc-900 text-sm text-zinc-200 px-2 py-1.5"
+                title={spreadOn ? "70–100" : "Auto-spread is off — the whole order is direct"}
+                className="w-16 rounded border border-zinc-700 bg-zinc-900 text-sm text-zinc-200 px-2 py-1.5 disabled:opacity-50"
               />
             </div>
             <button

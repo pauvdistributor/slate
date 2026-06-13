@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SlateChart from "@/components/SlateChart";
 import Nav from "@/components/Nav";
 import FlowBreakdown, { type FlowLeg } from "@/components/FlowBreakdown";
@@ -36,6 +36,7 @@ import {
   type RebalanceSchedule,
   type PersonPricePoint,
   type PersonOrder,
+  type CascadeClosure,
 } from "@/slate/slate-engine";
 import { shortViabilityCheck } from "@/market/pauv-engine";
 import PersonOrderLog from "@/components/PersonOrderLog";
@@ -43,6 +44,8 @@ import {
   botTick,
   botPortfolios,
   closeAllPositions,
+  closeAccountPositions,
+  creditBotCascades,
   type SimState,
   type BotPortfolio,
 } from "@/slate/simulation";
@@ -54,11 +57,17 @@ import {
   getSlatePrice,
   getFeesEnabled,
   allPeople,
+  findPerson,
+  getLastViewedPerson,
+  setLastViewedPerson,
+  getWallet,
+  adjustWallet,
+  USER_ID,
   type RosterPerson,
 } from "@/slate/slate-store";
 import Link from "next/link";
 
-const YOU = "you";
+const YOU = USER_ID;
 
 interface View {
   /** The live slate behind this view (refreshed snapshots key off view identity). */
@@ -107,6 +116,21 @@ function fmtUSD(n: number, d = 2): string {
 
 type TradeMsg = { kind: "ok" | "err"; text: string };
 
+/**
+ * Credit YOUR share of a trade's liquidation cascades back to the wallet
+ * (bot owners are credited via creditBotCascades / inside botTick). Returns
+ * a banner fragment, "" when none of your positions were hit.
+ */
+function settleYourCascades(cascades: CascadeClosure[] | undefined): string {
+  const yours = (cascades ?? []).filter((c) => c.userId === YOU);
+  if (yours.length === 0) return "";
+  const proceeds = yours.reduce((s, c) => s + c.proceeds, 0);
+  if (proceeds > 0) adjustWallet(proceeds);
+  const legs = yours.reduce((s, c) => s + c.closedSlateLegs, 0);
+  const what = yours.length === 1 ? "a short of yours" : `${yours.length} shorts of yours`;
+  return ` — ${what} got liquidated; ${legs} linked slate leg${legs === 1 ? "" : "s"} auto-closed, returning ${fmtUSD(proceeds)} to your wallet`;
+}
+
 export default function SinglePage() {
   const simRef = useRef<SimState | null>(null);
   const [selected, setSelected] = useState<RosterPerson | null>(null);
@@ -114,6 +138,8 @@ export default function SinglePage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [amount, setAmount] = useState("1000");
   const [primary, setPrimary] = useState("95");
+  // Auto-spread on/off: off trades 100% direct (no slate leg).
+  const [spreadOn, setSpreadOn] = useState(true);
   const [lastResult, setLastResult] = useState<InvestResult | null>(null);
   const [tradeMsg, setTradeMsg] = useState<TradeMsg | null>(null);
   // Person whose slate has no initial value yet — trading on them is blocked.
@@ -122,14 +148,15 @@ export default function SinglePage() {
   const refresh = useCallback(() => {
     const sim = simRef.current;
     if (!sim) return;
-    // The slate is named after its category — also the storage sub-key.
-    saveSim(sim, "single", sim.slate.name);
+    saveSim(sim);
     setView(deriveView(sim));
   }, []);
 
   // Look up a person: load (or seed) their category's sim and focus them.
   // Blocked until their slate's initial value is set (Set the Slates page).
   const onPick = useCallback((p: RosterPerson) => {
+    // Remembered even when blocked, so tab jumps restore this view.
+    setLastViewedPerson(p.ticker);
     if (getSlatePrice(p.category) == null) {
       simRef.current = null;
       setSelected(null);
@@ -138,11 +165,18 @@ export default function SinglePage() {
       return;
     }
     setBlocked(null);
-    let sim = loadOrSeed("single", { category: p.category, mode: "single" }, p.category);
+    // The person's slate sim is SHARED with the Slate tab — trades here move
+    // the same world its chart shows.
+    let sim = loadOrSeed(p.category);
     if (!getConstituent(sim.slate, p.ticker)) {
-      // Stale sim from an older roster — reseed so the person exists.
-      resetSim("single", p.category);
-      sim = loadOrSeed("single", { category: p.category, mode: "single" }, p.category);
+      // Stale sim from an older roster (the person was added after it was
+      // seeded). Cash YOUR positions out first so the reseed doesn't strand
+      // wallet money, then reseed so the person exists.
+      const { proceeds, cascades } = closeAccountPositions(sim.slate, YOU, activeFeeRate());
+      if (proceeds) adjustWallet(proceeds);
+      settleYourCascades(cascades);
+      resetSim(p.category);
+      sim = loadOrSeed(p.category);
     }
     simRef.current = sim;
     setSelected(p);
@@ -151,6 +185,15 @@ export default function SinglePage() {
     setView(deriveView(sim));
   }, []);
 
+  // Restore the last person you were looking at when returning to this tab.
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  useEffect(() => {
+    const ticker = getLastViewedPerson();
+    const p = ticker ? findPerson(ticker) : undefined;
+    if (p) onPick(p);
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
   // Reseed the current category, preserving settings not overridden.
   const reseed = useCallback((o: {
     startMs?: number;
@@ -158,14 +201,19 @@ export default function SinglePage() {
     const cat = selected?.category;
     if (!cat) return;
     const b = simRef.current?.slate;
-    resetSim("single", cat);
+    if (simRef.current) {
+      // Cash YOUR positions out first so the wipe doesn't strand wallet money.
+      const { proceeds, cascades } = closeAccountPositions(simRef.current.slate, YOU, activeFeeRate());
+      if (proceeds) adjustWallet(proceeds);
+      settleYourCascades(cascades);
+    }
+    resetSim(cat);
     const sim = seedSim({
       category: cat,
       startMs: o.startMs ?? b?.startMs,
-      mode: "single",
     });
     simRef.current = sim;
-    saveSim(sim, "single", cat);
+    saveSim(sim);
     setLastResult(null);
     setTradeMsg(null);
     setView(deriveView(sim));
@@ -177,7 +225,11 @@ export default function SinglePage() {
     if (!simRef.current || !selected) return;
     simRef.current.config.feeRate = activeFeeRate();
     // Bots trade only the profile currently being viewed.
-    botTick(simRef.current, undefined, selected.ticker);
+    const ev = botTick(simRef.current, undefined, selected.ticker);
+    // A bot trade can liquidate YOUR parent short; its slate leg auto-closes
+    // and the proceeds belong in your wallet (bots are credited in botTick).
+    const cascadeNote = settleYourCascades(ev.cascades);
+    if (cascadeNote) setTradeMsg({ kind: "ok", text: `Bot trading${cascadeNote}` });
     refresh();
   }, [refresh, selected]);
 
@@ -189,7 +241,11 @@ export default function SinglePage() {
   const onCloseAll = useCallback(() => {
     if (!simRef.current) return;
     simRef.current.config.feeRate = activeFeeRate();
-    closeAllPositions(simRef.current);
+    // Bots only — YOUR positions stay open until you close them yourself,
+    // though a buyback can liquidate one; that cascade is yours to pocket.
+    const { cascades } = closeAllPositions(simRef.current);
+    const cascadeNote = settleYourCascades(cascades);
+    if (cascadeNote) setTradeMsg({ kind: "ok", text: `Closed all bot positions${cascadeNote}` });
     refresh();
   }, [refresh]);
 
@@ -206,7 +262,11 @@ export default function SinglePage() {
   }, [refresh]);
 
   const amt = parseFloat(amount) || 0;
-  const primaryPct = Math.min(100, Math.max(0, parseFloat(primary) || 0)) / 100;
+  // Direct share floors at 70% (the 70/30 product rule); toggling auto-spread
+  // off trades 100% direct.
+  const primaryPct = spreadOn
+    ? Math.min(100, Math.max(70, parseFloat(primary) || 95)) / 100
+    : 1;
   const selectedId = selected?.ticker ?? "";
 
   // ---- trading ----
@@ -214,13 +274,20 @@ export default function SinglePage() {
   const doLong = useCallback(() => {
     const sim = simRef.current;
     if (!sim || !selectedId || amt <= 0) return;
+    if (amt > getWallet()) {
+      setTradeMsg({ kind: "err", text: `Insufficient funds: ${fmtUSD(amt)} exceeds your wallet (${fmtUSD(getWallet())}).` });
+      return;
+    }
     try {
       const res = investInPerson(sim.slate, selectedId, amt, { primaryPct, investorId: YOU, feeRate: activeFeeRate() });
+      adjustWallet(-amt);
+      creditBotCascades(sim, res.cascadeClosures);
+      const cascadeNote = settleYourCascades(res.cascadeClosures);
       const a = res.allocations.find((x) => x.isPrimary);
       setLastResult(res);
       setTradeMsg({
         kind: "ok",
-        text: `Long ${fmtUSD(amt)} — price ${fmtUSD(a?.priceBefore ?? 0)} → ${fmtUSD(a?.priceAfter ?? 0)}`,
+        text: `Long ${fmtUSD(amt)} — price ${fmtUSD(a?.priceBefore ?? 0)} → ${fmtUSD(a?.priceAfter ?? 0)}${cascadeNote}`,
       });
       refresh();
     } catch (e) {
@@ -231,6 +298,10 @@ export default function SinglePage() {
   const doShort = useCallback(() => {
     const sim = simRef.current;
     if (!sim || !selectedId || amt <= 0) return;
+    if (amt > getWallet()) {
+      setTradeMsg({ kind: "err", text: `Insufficient funds: ${fmtUSD(amt)} exceeds your wallet (${fmtUSD(getWallet())}).` });
+      return;
+    }
     const directStake = amt * primaryPct;
     // Same viability gate DTM4.1 runs before opening a short, applied to the
     // direct leg: blocked → refuse, limited → warn and confirm.
@@ -259,6 +330,9 @@ export default function SinglePage() {
     }
     try {
       const res = shortPerson(sim.slate, selectedId, amt, { investorId: YOU, primaryPct, feeRate: activeFeeRate() });
+      adjustWallet(-amt);
+      creditBotCascades(sim, res.cascadeClosures);
+      const cascadeNote = settleYourCascades(res.cascadeClosures);
       setLastResult(null);
       setTradeMsg({
         kind: "ok",
@@ -267,7 +341,7 @@ export default function SinglePage() {
           (res.slateShortCount > 0
             ? `, ${fmtUSD(res.slateAmount)} spread as shorts across ${res.slateShortCount} slate members`
             : "") +
-          ` — price ${fmtUSD(res.priceBefore)} → ${fmtUSD(res.priceAfter)}`,
+          ` — price ${fmtUSD(res.priceBefore)} → ${fmtUSD(res.priceAfter)}${cascadeNote}`,
       });
       refresh();
     } catch (e) {
@@ -280,13 +354,16 @@ export default function SinglePage() {
     if (!sim || !selectedId) return;
     try {
       const res = closePersonPosition(sim.slate, selectedId, positionId, { feeRate: activeFeeRate() });
+      adjustWallet(res.proceeds);
+      creditBotCascades(sim, res.cascadeClosures);
+      const cascadeNote = settleYourCascades(res.cascadeClosures);
       const slateNote = res.closedSlateLegs > 0
         ? ` (${fmtUSD(res.directProceeds)} direct + ${fmtUSD(res.slateProceeds)} from ${res.closedSlateLegs} slate leg${res.closedSlateLegs === 1 ? "" : "s"})`
         : "";
       const failNote = res.failedSlateLegs > 0
         ? ` — ${res.failedSlateLegs} slate leg(s) could not close yet and stay open`
         : "";
-      setTradeMsg({ kind: "ok", text: `Position closed — ${fmtUSD(res.proceeds)} returned${slateNote}${failNote}` });
+      setTradeMsg({ kind: "ok", text: `Position closed — ${fmtUSD(res.proceeds)} returned${slateNote}${failNote}${cascadeNote}` });
       refresh();
     } catch (e) {
       setTradeMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
@@ -303,7 +380,7 @@ export default function SinglePage() {
     const b = view?.slate;
     if (!b || !selectedId) return [];
     const c = getConstituent(b, selectedId);
-    return c ? personPriceHistory(c) : [];
+    return c ? personPriceHistory(c, b) : [];
   }, [view, selectedId]);
 
   // One entry per trade: the direct position combined with its slate leg.
@@ -423,6 +500,8 @@ export default function SinglePage() {
               onAmount={setAmount}
               primary={primary}
               onPrimary={setPrimary}
+              spreadOn={spreadOn}
+              onSpreadToggle={setSpreadOn}
               onLong={doLong}
               onShort={doShort}
               orders={orders}

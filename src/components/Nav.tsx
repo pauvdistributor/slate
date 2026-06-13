@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { resetAllSims, getFeesEnabled, setFeesEnabled } from "@/slate/slate-store";
+import {
+  resetAllSims,
+  getFeesEnabled,
+  setFeesEnabled,
+  getWallet,
+  resetWallet,
+  onWalletChange,
+  WALLET_STARTING_CASH,
+} from "@/slate/slate-store";
 import { DIRECT_FEE_RATE } from "@/slate/slate-engine";
 
 const TABS = [
@@ -26,8 +34,14 @@ export default function Nav({
 
   // Hydration-safe read of the persisted toggle.
   const [feesOn, setFeesOn] = useState(true);
+  // Your cash: debited on every open, credited on every close.
+  const [wallet, setWallet] = useState(WALLET_STARTING_CASH);
   /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => { setFeesOn(getFeesEnabled()); }, []);
+  useEffect(() => {
+    setFeesOn(getFeesEnabled());
+    setWallet(getWallet());
+    return onWalletChange(() => setWallet(getWallet()));
+  }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const toggleFees = () => {
@@ -37,8 +51,9 @@ export default function Nav({
   };
 
   const doRestart = () => {
-    if (!window.confirm("Restart the simulation? This clears ALL trades, positions, and history on every slate, and resets each slate to its initial value.")) return;
+    if (!window.confirm("Restart the simulation? This clears ALL trades, positions, and history on every slate, resets each slate to its initial value, and refills your wallet to $10M.")) return;
     resetAllSims();
+    resetWallet();
     window.location.reload();
   };
 
@@ -63,6 +78,22 @@ export default function Nav({
         );
       })}
       <div className="ml-auto flex items-center gap-2">
+        <span
+          className="text-xs tabular-nums"
+          title={`Your cash. Starts at $${WALLET_STARTING_CASH.toLocaleString("en-US")}; every open subtracts, every close adds back. After closing everything, any drift beyond fees and liquidations is a conservation leak.`}
+        >
+          <span className="text-zinc-500">You:</span>{" "}
+          <span className={wallet >= WALLET_STARTING_CASH ? "text-emerald-300" : "text-zinc-200"}>
+            ${wallet.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          {wallet !== WALLET_STARTING_CASH && (
+            // 6 decimals so sub-cent conservation leaks are visible.
+            <span className={`ml-1 ${wallet >= WALLET_STARTING_CASH ? "text-emerald-400" : "text-red-400"}`}>
+              ({wallet >= WALLET_STARTING_CASH ? "+" : "−"}$
+              {Math.abs(wallet - WALLET_STARTING_CASH).toLocaleString("en-US", { minimumFractionDigits: 6, maximumFractionDigits: 6 })})
+            </span>
+          )}
+        </span>
         {feesPaid != null && (
           <span
             className="text-xs text-zinc-400 tabular-nums"

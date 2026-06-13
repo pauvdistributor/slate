@@ -12,6 +12,8 @@ import {
   closePersonPosition,
   personPositions,
   personOrders,
+  personPriceHistory,
+  getConstituent,
   slateLinkedPositionIds,
   totalFeesPaid,
   DIRECT_FEE_RATE,
@@ -105,6 +107,27 @@ describe("linked slate legs — shorts", () => {
     // The person's own curve carries the direct short and its slate slice.
     expect(personPositions(b, "A", YOU)).toHaveLength(2);
     expect(slateLinkedPositionIds(b, "A").size).toBe(1);
+  });
+
+  it("price history tags each leg: longs by the pool's userId, shorts via the leg registry — surviving the close", () => {
+    const b = freshSlate();
+    const long = investInPerson(b, "A", 1000, { primaryPct: 0.95, investorId: YOU });
+    const short = shortPerson(b, "A", 100, { primaryPct: 0.95, investorId: YOU });
+
+    const a = () => getConstituent(b, "A")!;
+    const sources = (event: string) =>
+      personPriceHistory(a(), b).filter((p) => p.event === event).map((p) => p.source).sort();
+
+    // One direct + one slate leg per order, on the person's own curve.
+    expect(sources("buy")).toEqual(["order", "slate"]);
+    expect(sources("short_open")).toEqual(["order", "slate"]);
+
+    // Closing unwinds the legs; the close txs keep the same tagging even
+    // though the linkedLegs entries are deleted by the unwind.
+    closePersonPosition(b, "A", long.positionId!);
+    closePersonPosition(b, "A", short.positionId!);
+    expect(sources("sell")).toEqual(["order", "slate"]);
+    expect(sources("short_close")).toEqual(["order", "slate"]);
   });
 
   it("closing the direct short closes all linked member shorts", () => {
@@ -241,5 +264,62 @@ describe("direct-leg fees", () => {
     const res = investInPerson(b, "A", 1000, { primaryPct: 0.95, investorId: YOU });
     closePersonPosition(b, "A", res.positionId!);
     expect(totalFeesPaid(b)).toBe(0);
+  });
+});
+
+describe("liquidation cascade — parent liquidated → slate leg auto-closed", () => {
+  it("a buy that liquidates the parent short auto-closes its member shorts", () => {
+    const b = freshSlate();
+    const res = shortPerson(b, "A", 1000, { primaryPct: 0.95, investorId: YOU });
+    const parentId = res.positionId;
+
+    // A whale buy on A's curve walks the price past the parent's trip point.
+    const whale = investInPerson(b, "A", 1_000_000, { primaryPct: 1, investorId: "whale" });
+
+    // The parent direct short was liquidated by the walk...
+    const a = b.constituents.find((c) => c.id === "A")!;
+    expect(a.market.positions[parentId]).toBeUndefined();
+    expect(a.market.txLog.some((tx) => tx.type === "liquidation" && tx.positionId === parentId)).toBe(true);
+
+    // ...so the slate leg auto-closed with it: link gone, closure reported.
+    expect(b.linkedLegs?.[parentId]).toBeUndefined();
+    expect(whale.cascadeClosures).toHaveLength(1);
+    const cc = whale.cascadeClosures[0];
+    expect(cc.parentPositionId).toBe(parentId);
+    expect(cc.personId).toBe("A");
+    expect(cc.userId).toBe(YOU);
+    expect(cc.proceeds).toBeGreaterThan(0);
+    // A's own member leg may have been liquidated alongside the parent; the
+    // four member shorts on the other curves must have been bought back.
+    expect(cc.closedSlateLegs).toBeGreaterThanOrEqual(4);
+    expect(cc.failedSlateLegs).toBe(0);
+
+    // Nothing of yours remains open anywhere.
+    for (const c of b.constituents) {
+      expect(Object.values(c.market.positions).filter((p) => p.userId === YOU)).toHaveLength(0);
+    }
+  });
+
+  it("trades that liquidate nothing report no cascade closures", () => {
+    const b = freshSlate();
+    const inv = investInPerson(b, "A", 1000, { primaryPct: 0.95, investorId: YOU });
+    expect(inv.cascadeClosures).toHaveLength(0);
+    const sh = shortPerson(b, "B", 1000, { primaryPct: 0.95, investorId: YOU });
+    expect(sh.cascadeClosures).toHaveLength(0);
+    const close = closePersonPosition(b, "B", sh.positionId);
+    expect(close.cascadeClosures).toHaveLength(0);
+  });
+
+  it("a long parent is never liquidated — its units leg survives other liquidations", () => {
+    const b = freshSlate();
+    const longRes = investInPerson(b, "A", 1000, { primaryPct: 0.95, investorId: YOU });
+    const shortRes = shortPerson(b, "A", 1000, { primaryPct: 0.95, investorId: "other" });
+
+    investInPerson(b, "A", 1_000_000, { primaryPct: 1, investorId: "whale" });
+
+    // The other user's short parent cascaded away; your long and its units stay.
+    expect(b.linkedLegs?.[shortRes.positionId]).toBeUndefined();
+    expect(b.linkedLegs?.[longRes.positionId!]?.units).toBeGreaterThan(0);
+    expect(b.ledger.holders[YOU]).toBeGreaterThan(0);
   });
 });

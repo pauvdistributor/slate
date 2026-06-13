@@ -33,6 +33,7 @@ export async function POST(request: Request) {
       slateProceeds: res.slateProceeds,
       closedSlateLegs: res.closedSlateLegs,
       failedSlateLegs: res.failedSlateLegs,
+      cascadeClosures: res.cascadeClosures,
       priceBefore: res.priceBefore,
       priceAfter: res.priceAfter,
       slateValue: res.slateAfter,

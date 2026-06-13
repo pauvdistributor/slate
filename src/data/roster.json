@@ -1,21 +1,29 @@
 {
-  "fetchedAt": "2026-06-09T19:25:02.278Z",
+  "fetchedAt": "2026-06-12T23:37:21.431Z",
   "source": "Pauv MAIN Supabase (profiles + markets)",
   "categories": [
     {
       "name": "Soccer",
-      "count": 119
+      "count": 125
+    },
+    {
+      "name": "Rapper",
+      "count": 23
     },
     {
       "name": "Basketball",
       "count": 23
     },
     {
-      "name": "Rapper",
-      "count": 22
+      "name": "Actress",
+      "count": 9
     },
     {
-      "name": "Football",
+      "name": "Film",
+      "count": 9
+    },
+    {
+      "name": "Mixed Martial Arts",
       "count": 8
     },
     {
@@ -27,7 +35,7 @@
       "count": 5
     },
     {
-      "name": "Mixed Martial Artist",
+      "name": "Football",
       "count": 5
     },
     {
@@ -43,11 +51,19 @@
       "count": 4
     },
     {
+      "name": "Bodybuilding",
+      "count": 4
+    },
+    {
+      "name": "Singer-songwriter",
+      "count": 4
+    },
+    {
       "name": "Singer-Songwriter",
       "count": 3
     },
     {
-      "name": "Singer-songwriter",
+      "name": "Filmmaker",
       "count": 3
     },
     {
@@ -55,15 +71,7 @@
       "count": 3
     },
     {
-      "name": "Boxer",
-      "count": 3
-    },
-    {
-      "name": "Mixed Martial Arts",
-      "count": 3
-    },
-    {
-      "name": "Footballer",
+      "name": "Boxing",
       "count": 3
     },
     {
@@ -87,11 +95,7 @@
       "count": 2
     },
     {
-      "name": "Golfer",
-      "count": 2
-    },
-    {
-      "name": "Bodybuilding",
+      "name": "Golf",
       "count": 2
     },
     {
@@ -99,11 +103,15 @@
       "count": 2
     },
     {
-      "name": "Vice President",
+      "name": "Horror",
       "count": 2
     },
     {
-      "name": "Bodybuilder",
+      "name": "Film and Television",
+      "count": 2
+    },
+    {
+      "name": "Vice President",
       "count": 2
     },
     {
@@ -131,11 +139,19 @@
       "count": 1
     },
     {
+      "name": "Film Producer",
+      "count": 1
+    },
+    {
       "name": "Tennis",
       "count": 1
     },
     {
       "name": "Venture Capitalist",
+      "count": 1
+    },
+    {
+      "name": "Director",
       "count": 1
     },
     {
@@ -148,6 +164,10 @@
     },
     {
       "name": "Youtuber",
+      "count": 1
+    },
+    {
+      "name": "Professional Wrestler",
       "count": 1
     },
     {
@@ -215,10 +235,6 @@
       "count": 1
     },
     {
-      "name": "Actress",
-      "count": 1
-    },
-    {
       "name": "Psychedelic Rock",
       "count": 1
     },
@@ -228,6 +244,10 @@
     },
     {
       "name": "Entrepreneur",
+      "count": 1
+    },
+    {
+      "name": "Television",
       "count": 1
     },
     {
@@ -335,7 +355,7 @@
       "priceUsd": 0.05,
       "p0Usd": 0.0005,
       "holders": 3,
-      "volumeUsd": 145.54,
+      "volumeUsd": 15,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/davenport-5fdb52cc407a.webp",
       "industry": "Entrepreneur"
@@ -347,8 +367,8 @@
       "category": "Basketball",
       "priceUsd": 6.5,
       "p0Usd": 0.065,
-      "holders": 1,
-      "volumeUsd": 8.77,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/aj-dybantsa-f09e6fd02e77.webp",
       "industry": "Athlete"
@@ -371,8 +391,8 @@
       "ticker": "garnacho",
       "name": "Alejandro Garnacho",
       "category": "Soccer",
-      "priceUsd": 3.07,
-      "p0Usd": 0.030699999999999998,
+      "priceUsd": 9.6,
+      "p0Usd": 0.096,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -410,10 +430,10 @@
       "ticker": "alex-karp",
       "name": "Alex Karp",
       "category": "Technology",
-      "priceUsd": 2.66,
-      "p0Usd": 0.026600000000000002,
-      "holders": 1,
-      "volumeUsd": 5,
+      "priceUsd": 12.4,
+      "p0Usd": 0.124,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/alex-karp-988ca2baee7a.webp",
       "industry": "Entrepreneur"
@@ -422,7 +442,7 @@
       "id": "762125e5-fded-40bb-8e0f-d39a16c0d710",
       "ticker": "alex-pereira",
       "name": "Alex Pereira",
-      "category": "Mixed Martial Artist",
+      "category": "Mixed Martial Arts",
       "priceUsd": 18.75,
       "p0Usd": 0.1875,
       "holders": 0,
@@ -451,8 +471,8 @@
       "category": "Representative",
       "priceUsd": 12.36,
       "p0Usd": 0.12359999999999999,
-      "holders": 1,
-      "volumeUsd": 5,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/aoc-375d4bad2b3f.webp",
       "industry": "Politician"
@@ -497,6 +517,19 @@
       "industry": "Athlete"
     },
     {
+      "id": "803353db-9007-4ae4-b054-4121d67b2c0e",
+      "ticker": "anadearmas",
+      "name": "Ana de Armas",
+      "category": "Actress",
+      "priceUsd": 28.08,
+      "p0Usd": 0.2808,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/ana-de-armas-60d293812bc0.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "e0c3f16a-fd68-4c5e-97b7-eb8c351659b2",
       "ticker": "cobratate",
       "name": "Andrew Tate",
@@ -527,13 +560,26 @@
       "ticker": "angel-reese",
       "name": "Angel Reese",
       "category": "Basketball",
-      "priceUsd": 7.76,
-      "p0Usd": 0.0776,
+      "priceUsd": 12.53,
+      "p0Usd": 0.1253,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/angel-reese-1e1b97b6bc00.webp",
       "industry": "Athlete"
+    },
+    {
+      "id": "0b760fd4-adf7-4a7b-9618-fadc2a537fd6",
+      "ticker": "hathaway",
+      "name": "Anne Hathaway",
+      "category": "Film",
+      "priceUsd": 36.29,
+      "p0Usd": 0.3629,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/anne-hathaway-fe9dcb205808.webp",
+      "industry": "Actor"
     },
     {
       "id": "0924380f-eaa2-48ce-ade3-f7d53eb87e37",
@@ -555,8 +601,8 @@
       "category": "Football",
       "priceUsd": 11.05,
       "p0Usd": 0.1105,
-      "holders": 1,
-      "volumeUsd": 10,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/arch-manning-6b1546b2314d.webp",
       "industry": "Athlete"
@@ -579,8 +625,8 @@
       "ticker": "asmongold",
       "name": "Asmongold",
       "category": "Gaming",
-      "priceUsd": 4.98,
-      "p0Usd": 0.049800000000000004,
+      "priceUsd": 8.4,
+      "p0Usd": 0.084,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -683,13 +729,26 @@
       "ticker": "beyonce",
       "name": "Beyoncé",
       "category": "Singer-Songwriter",
-      "priceUsd": 25.02,
-      "p0Usd": 0.2502,
+      "priceUsd": 30.25,
+      "p0Usd": 0.3025,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/beyonce-5457bc53d9cc.webp",
       "industry": "Musician"
+    },
+    {
+      "id": "a6c1fa2c-4056-4e97-b1f4-0ff9d48ba38b",
+      "ticker": "pitt",
+      "name": "Brad Pitt",
+      "category": "Film Producer",
+      "priceUsd": 36.61,
+      "p0Usd": 0.3661,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/pitt-6d71a503a853.webp",
+      "industry": "Actor"
     },
     {
       "id": "e6ffd285-3303-4844-8e0e-8921b6f894bb",
@@ -747,7 +806,7 @@
       "id": "f79641a6-4149-47b9-b8a4-0deef6965185",
       "ticker": "dechambeau",
       "name": "Bryson DeChambeau",
-      "category": "Golfer",
+      "category": "Golf",
       "priceUsd": 9.18,
       "p0Usd": 0.09179999999999999,
       "holders": 0,
@@ -783,12 +842,25 @@
       "industry": "Musician"
     },
     {
+      "id": "74541cf9-ed5a-49ee-8109-8685ca323b7e",
+      "ticker": "cspaeny",
+      "name": "Cailee Spaeny",
+      "category": "Actress",
+      "priceUsd": 16.52,
+      "p0Usd": 0.16519999999999999,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/cailee-spaeny-de4b8664f400.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "4346f7b0-8151-433d-8d8a-191c4f3ebdd8",
       "ticker": "caitlin-clark",
       "name": "Caitlin Clark",
       "category": "Basketball",
-      "priceUsd": 11.96,
-      "p0Usd": 0.11960000000000001,
+      "priceUsd": 23.46,
+      "p0Usd": 0.2346,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -828,8 +900,8 @@
       "category": "Tennis",
       "priceUsd": 15.21,
       "p0Usd": 0.1521,
-      "holders": 1,
-      "volumeUsd": 15,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/carlos-alcaraz-c9f43ac917cd.webp",
       "industry": "Athlete"
@@ -839,8 +911,8 @@
       "ticker": "caseoh",
       "name": "CaseOh",
       "category": "Gamer",
-      "priceUsd": 2.96,
-      "p0Usd": 0.0296,
+      "priceUsd": 7.85,
+      "p0Usd": 0.0785,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -865,13 +937,26 @@
       "ticker": "palihapitiya",
       "name": "Chamath Palihapitiya",
       "category": "Venture Capitalist",
-      "priceUsd": 1.57,
-      "p0Usd": 0.015700000000000002,
+      "priceUsd": 6.7,
+      "p0Usd": 0.067,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/palihapitiya-7ef0a7bb05d0.webp",
       "industry": "Entrepreneur"
+    },
+    {
+      "id": "6447a6fa-05e1-4213-a152-f550b6cbc784",
+      "ticker": "chaseinfin",
+      "name": "Chase Infiniti",
+      "category": "Actress",
+      "priceUsd": 16.06,
+      "p0Usd": 0.1606,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/chaseinfin-ad776825fc38.webp",
+      "industry": "Actor"
     },
     {
       "id": "b86e268e-3c24-46d7-8723-61acc329e81d",
@@ -885,6 +970,32 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/che-5e06fd935fdd.webp",
       "industry": "Musician"
+    },
+    {
+      "id": "68719341-c094-4372-8af3-533efa1c7e04",
+      "ticker": "ejiofor",
+      "name": "Chiwetel Ejiofor",
+      "category": "Film",
+      "priceUsd": 16.11,
+      "p0Usd": 0.1611,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/chiwetel-ejiofor-ea655ae026e7.webp",
+      "industry": "Entrepreneur"
+    },
+    {
+      "id": "601ec006-4eca-48e2-87ab-ea450d498f0f",
+      "ticker": "czhao",
+      "name": "Chloe Zhao",
+      "category": "Director",
+      "priceUsd": 10.15,
+      "p0Usd": 0.1015,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/czhao-c72d6a18c6b5.webp",
+      "industry": "Entrepreneur"
     },
     {
       "id": "901489ba-63c7-47dc-8ad4-877eaae1c012",
@@ -913,14 +1024,27 @@
       "industry": "Athlete"
     },
     {
+      "id": "db64cde2-ca12-43ba-95b3-c3d2e236be01",
+      "ticker": "nolan",
+      "name": "Christopher Nolan",
+      "category": "Filmmaker",
+      "priceUsd": 37.62,
+      "p0Usd": 0.3762,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/nolan-9129b98045d4.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "db2e19f5-54b2-49c2-bc67-968c93fc7e69",
       "ticker": "clavicular",
       "name": "Clavicular",
       "category": "Influencer",
       "priceUsd": 14.72,
       "p0Usd": 0.1472,
-      "holders": 1,
-      "volumeUsd": 5,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/clavicular-d3f15412964c.webp",
       "industry": "Streamer"
@@ -946,7 +1070,7 @@
       "priceUsd": 0.52,
       "p0Usd": 0.0052,
       "holders": 0,
-      "volumeUsd": 9.82,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/coffeezilla-2fe8f2062c5c.webp",
       "industry": "Youtuber"
@@ -968,7 +1092,7 @@
       "id": "4c4c504b-ebc4-4fa1-832a-855d164022fb",
       "ticker": "conor-mcgregor",
       "name": "Conor McGregor",
-      "category": "Mixed Martial Artist",
+      "category": "Mixed Martial Arts",
       "priceUsd": 31.08,
       "p0Usd": 0.31079999999999997,
       "holders": 0,
@@ -982,10 +1106,10 @@
       "ticker": "flagg",
       "name": "Cooper Flagg",
       "category": "Basketball",
-      "priceUsd": 12.22,
-      "p0Usd": 0.1222,
-      "holders": 1,
-      "volumeUsd": 20,
+      "priceUsd": 16.5,
+      "p0Usd": 0.165,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/cooper-flagg-4422762872a6.webp",
       "industry": "Athlete"
@@ -1007,7 +1131,7 @@
       "id": "31b71558-4268-4f86-9d1b-2a2caa4523b0",
       "ticker": "ronaldo",
       "name": "Cristiano Ronaldo",
-      "category": "Football",
+      "category": "Soccer",
       "priceUsd": 47.63,
       "p0Usd": 0.4763,
       "holders": 0,
@@ -1015,6 +1139,19 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/ronaldo-d196be4abd0e.webp",
       "industry": "Athlete"
+    },
+    {
+      "id": "10f3ef7e-1287-47fa-8333-5cd9001b2e51",
+      "ticker": "cbarker",
+      "name": "Curry Barker",
+      "category": "Horror",
+      "priceUsd": 11.01,
+      "p0Usd": 0.1101,
+      "holders": 1,
+      "volumeUsd": 5,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/cbarker-8e95e6af8faa.webp",
+      "industry": "Entrepreneur"
     },
     {
       "id": "71b168b2-3802-4975-b3b2-416541ed5953",
@@ -1028,6 +1165,19 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/dolmo-b840e5e944b4.webp",
       "industry": "Athlete"
+    },
+    {
+      "id": "82440f4c-0fa1-45da-af11-935b14f01467",
+      "ticker": "craig",
+      "name": "Daniel Craig",
+      "category": "Film",
+      "priceUsd": 23.27,
+      "p0Usd": 0.2327,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/craig-4d3dbe1be6f2.webp",
+      "industry": "Actor"
     },
     {
       "id": "8b3924c8-99bd-4cb3-9dc4-d4675f335bbb",
@@ -1060,8 +1210,8 @@
       "ticker": "deaaronfox",
       "name": "De'Aaron Fox",
       "category": "Basketball",
-      "priceUsd": 10.19,
-      "p0Usd": 0.10188000000000001,
+      "priceUsd": 13.76,
+      "p0Usd": 0.1376,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -1166,8 +1316,8 @@
       "category": "Football",
       "priceUsd": 9.47,
       "p0Usd": 0.0947,
-      "holders": 1,
-      "volumeUsd": 10,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/drake-maye-0347a4621a82.webp",
       "industry": "Athlete"
@@ -1184,6 +1334,19 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/druski-ef0916721733.webp",
       "industry": "Comedian"
+    },
+    {
+      "id": "48c4f8ed-008e-4683-a078-51912dbb1362",
+      "ticker": "therock",
+      "name": "Dwayne Johnson",
+      "category": "Professional Wrestler",
+      "priceUsd": 44.35,
+      "p0Usd": 0.4435,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/therock-09cb499a60e5.webp",
+      "industry": "Actor"
     },
     {
       "id": "ed8cf240-aa49-4ca1-afd3-da99d6900a43",
@@ -1231,8 +1394,8 @@
       "category": "Singer-songwriter",
       "priceUsd": 14.5,
       "p0Usd": 0.145,
-      "holders": 0,
-      "volumeUsd": 0,
+      "holders": 1,
+      "volumeUsd": 5,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/langley-b689a86334cc.webp",
       "industry": "Musician"
@@ -1245,7 +1408,7 @@
       "priceUsd": 70.13,
       "p0Usd": 0.7012999999999999,
       "holders": 1,
-      "volumeUsd": 3,
+      "volumeUsd": 20,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/musk-7e0314e17f9a.webp",
       "industry": "Entrepreneur"
@@ -1283,8 +1446,8 @@
       "category": "Soccer",
       "priceUsd": 5.16,
       "p0Usd": 0.0516,
-      "holders": 1,
-      "volumeUsd": 41,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/endrick-82dbe31c9858.webp",
       "industry": "Athlete"
@@ -1446,6 +1609,32 @@
       "industry": "Athlete"
     },
     {
+      "id": "d07814ee-ffa9-45a9-87ee-5113483b4c74",
+      "ticker": "gpowell",
+      "name": "Glen Powell",
+      "category": "Filmmaker",
+      "priceUsd": 33.18,
+      "p0Usd": 0.3318,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/gpowell-e954b12ac6b7.webp",
+      "industry": "Actor"
+    },
+    {
+      "id": "f45d3b93-7ce0-42f8-98f3-2ab2f6958952",
+      "ticker": "gabrams",
+      "name": "Gracie Abrams",
+      "category": "Singer-songwriter",
+      "priceUsd": 18.24,
+      "p0Usd": 0.18239999999999998,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/gracie-abrams-5b9bf2b95ffd.webp",
+      "industry": "Musician"
+    },
+    {
       "id": "f68df310-b82e-4c86-b9de-80e099bcaee8",
       "ticker": "gxhaka",
       "name": "Granit Xhaka",
@@ -1462,7 +1651,7 @@
       "id": "a0846c94-9f4f-47c1-824e-1390cccfc60a",
       "ticker": "horvat",
       "name": "Grant Horvat",
-      "category": "Golfer",
+      "category": "Golf",
       "priceUsd": 0.95,
       "p0Usd": 0.0095,
       "holders": 0,
@@ -1541,13 +1730,26 @@
       "ticker": "hasanabi",
       "name": "Hasanabi",
       "category": "Political Commentator",
-      "priceUsd": 0.55,
-      "p0Usd": 0.0055000000000000005,
+      "priceUsd": 5.48,
+      "p0Usd": 0.0548,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/hasanabi-31ebdacc0f19.webp",
       "industry": "Streamer"
+    },
+    {
+      "id": "bb4095c5-a4b2-4019-80a8-3e3a6ba00863",
+      "ticker": "hschafer",
+      "name": "Hunter Schafer",
+      "category": "Actress",
+      "priceUsd": 14.96,
+      "p0Usd": 0.1496,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/hunter-schafer-74c0e631a5bc.webp",
+      "industry": "Actor"
     },
     {
       "id": "7d8cf49f-c59c-4762-add6-887afd519f73",
@@ -1579,7 +1781,7 @@
       "id": "a7001cd7-4a0c-40c5-9bbe-8ca7013dbe2b",
       "ticker": "idubbbz",
       "name": "iDubbbz",
-      "category": "Boxer",
+      "category": "Boxing",
       "priceUsd": 0.6,
       "p0Usd": 0.006,
       "holders": 0,
@@ -1615,6 +1817,19 @@
       "industry": "Athlete"
     },
     {
+      "id": "3fab81c2-7925-4501-ab4d-fc45c5d4dc27",
+      "ticker": "inavarrette",
+      "name": "Inde Navarrette",
+      "category": "Film",
+      "priceUsd": 12.16,
+      "p0Usd": 0.1216,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/inavarrette-4a0870ed5118.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "076d1348-4b86-4262-942e-443a02f8ad39",
       "ticker": "ishowspeed",
       "name": "IShowSpeed",
@@ -1631,7 +1846,7 @@
       "id": "d7b3f349-b113-4131-b239-44b0197c699d",
       "ticker": "islam-makhachev",
       "name": "Islam Makhachev",
-      "category": "Mixed Martial Artist",
+      "category": "Mixed Martial Arts",
       "priceUsd": 17.5,
       "p0Usd": 0.175,
       "holders": 0,
@@ -1654,10 +1869,23 @@
       "industry": "Musician"
     },
     {
+      "id": "cd1f4816-011b-4da2-b586-af7f9d54c51b",
+      "ticker": "elordi",
+      "name": "Jacob Elordi",
+      "category": "Film and Television",
+      "priceUsd": 32.19,
+      "p0Usd": 0.32189999999999996,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/jacob-elordi-c8f288b5ecd0.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "7b0913d1-3149-4a86-ae76-945419bc0a9c",
       "ticker": "jake-paul",
       "name": "Jake Paul",
-      "category": "Boxer",
+      "category": "Boxing",
       "priceUsd": 24.05,
       "p0Usd": 0.24050000000000002,
       "holders": 0,
@@ -1671,8 +1899,8 @@
       "ticker": "jbrunson",
       "name": "Jalen Brunson",
       "category": "Basketball",
-      "priceUsd": 10.11,
-      "p0Usd": 0.10114000000000001,
+      "priceUsd": 24.84,
+      "p0Usd": 0.2484,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -1696,7 +1924,7 @@
       "id": "a4af9f03-41b3-4d43-9033-e2d4b64ecdb6",
       "ticker": "rodrguezest",
       "name": "James Rodríguezest.",
-      "category": "Football",
+      "category": "Soccer",
       "priceUsd": 11.91,
       "p0Usd": 0.11911,
       "holders": 0,
@@ -1712,8 +1940,8 @@
       "category": "State Representative",
       "priceUsd": 5.74,
       "p0Usd": 0.0574,
-      "holders": 1,
-      "volumeUsd": 5,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/james-talarico-8b73f3dfea08.webp",
       "industry": "Politician"
@@ -1771,14 +1999,27 @@
       "industry": "Athlete"
     },
     {
+      "id": "cab53c05-733a-4a5b-a95f-a255bac0844a",
+      "ticker": "jortega",
+      "name": "Jenna Ortega",
+      "category": "Actress",
+      "priceUsd": 22.04,
+      "p0Usd": 0.22039999999999998,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/jortega-15c3b375e050.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "abb36e10-cdeb-42ef-8124-3be37dc16b90",
       "ticker": "jensen-huang",
       "name": "Jensen Huang",
       "category": "Technology",
-      "priceUsd": 7.87,
-      "p0Usd": 0.0787,
-      "holders": 1,
-      "volumeUsd": 10,
+      "priceUsd": 18.32,
+      "p0Usd": 0.1832,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/jensen-huang-17d6ec9b46a6.webp",
       "industry": "Entrepreneur"
@@ -1996,8 +2237,8 @@
       "ticker": "kai-cenat",
       "name": "Kai Cenat",
       "category": "YouTuber",
-      "priceUsd": 19.85,
-      "p0Usd": 0.1985,
+      "priceUsd": 27.54,
+      "p0Usd": 0.2754,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -2031,6 +2272,19 @@
       "industry": "Politician"
     },
     {
+      "id": "0e1ecf98-6c7e-4f6c-939f-92077e395b1d",
+      "ticker": "parsons",
+      "name": "Kane Parsons",
+      "category": "Horror",
+      "priceUsd": 16.71,
+      "p0Usd": 0.1671,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/parsons-a0f78330d107.webp",
+      "industry": "Entrepreneur"
+    },
+    {
       "id": "912f0fed-74bb-4561-bed2-1e31ad18c7be",
       "ticker": "ye",
       "name": "Kanye West",
@@ -2061,8 +2315,8 @@
       "ticker": "towns",
       "name": "Karl-Anthony Towns",
       "category": "Basketball",
-      "priceUsd": 16.1,
-      "p0Usd": 0.16104,
+      "priceUsd": 24.08,
+      "p0Usd": 0.2408,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -2138,7 +2392,7 @@
       "id": "7a820cb1-9e14-4101-a933-cdea4b24fbcf",
       "ticker": "bruyne",
       "name": "Kevin De Bruyne",
-      "category": "Footballer",
+      "category": "Soccer",
       "priceUsd": 14.03,
       "p0Usd": 0.14034000000000002,
       "holders": 0,
@@ -2146,6 +2400,19 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/kevin-de-bruyne-ae9079537e2c.webp",
       "industry": "Athlete"
+    },
+    {
+      "id": "6c082886-6c72-4f98-ba84-ac70807ec0c8",
+      "ticker": "gates",
+      "name": "Kevin Gates",
+      "category": "Rapper",
+      "priceUsd": 11.92,
+      "p0Usd": 0.1192,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/gates-8b8d623c9520.webp",
+      "industry": "Musician"
     },
     {
       "id": "e25deb5a-06fe-4a18-b52d-b29c3aeb5183",
@@ -2191,10 +2458,10 @@
       "ticker": "lamine-yamal",
       "name": "Lamine Yamal",
       "category": "Soccer",
-      "priceUsd": 2.34,
-      "p0Usd": 0.023399999999999997,
-      "holders": 4,
-      "volumeUsd": 383.57,
+      "priceUsd": 26.92,
+      "p0Usd": 0.2692,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/lamine-yamal-3dcee5c1443c.webp",
       "industry": "Athlete"
@@ -2245,8 +2512,8 @@
       "category": "Basketball",
       "priceUsd": 56.07,
       "p0Usd": 0.5607,
-      "holders": 1,
-      "volumeUsd": 10,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/lebron-81995cf5c8e5.webp",
       "industry": "Athlete"
@@ -2269,7 +2536,7 @@
       "ticker": "leroysan",
       "name": "Leroy Sané",
       "category": "Soccer",
-      "priceUsd": 9.58,
+      "priceUsd": 9.57,
       "p0Usd": 0.09574999999999999,
       "holders": 0,
       "volumeUsd": 0,
@@ -2334,8 +2601,8 @@
       "ticker": "ludwig",
       "name": "Ludwig",
       "category": "Variety Streamer",
-      "priceUsd": 3.13,
-      "p0Usd": 0.0313,
+      "priceUsd": 9.75,
+      "p0Usd": 0.0975,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -2408,14 +2675,27 @@
       "industry": "Athlete"
     },
     {
+      "id": "45261f1d-b599-40f5-b96b-7d3c32786945",
+      "ticker": "robbie",
+      "name": "Margot Robbie",
+      "category": "Actress",
+      "priceUsd": 35.71,
+      "p0Usd": 0.35710000000000003,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/margot-robbie-19e654f755ef.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "feeacdb1-936d-49f1-9f52-dc6ca224b99c",
       "ticker": "zuckerberg",
       "name": "Mark Zuckerberg",
       "category": "Technology",
       "priceUsd": 38.17,
       "p0Usd": 0.38170000000000004,
-      "holders": 0,
-      "volumeUsd": 0,
+      "holders": 1,
+      "volumeUsd": 5,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/mark-zuckerberg-868cd00dd94f.webp",
       "industry": "Entrepreneur"
@@ -2427,8 +2707,8 @@
       "category": "Internet personality",
       "priceUsd": 1.86,
       "p0Usd": 0.018600000000000002,
-      "holders": 1,
-      "volumeUsd": 5,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/marlon-691222e97ab5.webp",
       "industry": "Streamer"
@@ -2473,6 +2753,19 @@
       "industry": "Athlete"
     },
     {
+      "id": "4e45f930-09f5-4a59-9b7b-03192b17b21a",
+      "ticker": "damon",
+      "name": "Matt Damon",
+      "category": "Filmmaker",
+      "priceUsd": 29.41,
+      "p0Usd": 0.29410000000000003,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/matt-damon-c438b77cf4e7.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "166976e3-ebd3-4b47-9722-28731d4be8ae",
       "ticker": "max-holloway",
       "name": "Max Holloway",
@@ -2490,8 +2783,8 @@
       "ticker": "verstappen",
       "name": "Max Verstappen",
       "category": "Racing Driver",
-      "priceUsd": 4.87,
-      "p0Usd": 0.0487,
+      "priceUsd": 21.37,
+      "p0Usd": 0.2137,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -2515,7 +2808,7 @@
       "id": "cab409b1-41bb-44fd-91f5-326275599513",
       "ticker": "mdepay",
       "name": "Memphis Depay",
-      "category": "Footballer",
+      "category": "Soccer",
       "priceUsd": 11,
       "p0Usd": 0.10998,
       "holders": 0,
@@ -2593,7 +2886,7 @@
       "id": "6940b185-eb62-474a-91f1-44e5004f1710",
       "ticker": "mike-ohearn",
       "name": "Mike O'Hearn",
-      "category": "Bodybuilder",
+      "category": "Bodybuilding",
       "priceUsd": 1.04,
       "p0Usd": 0.0104,
       "holders": 0,
@@ -2614,6 +2907,19 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/mikel-merino-4594986ad3b5.webp",
       "industry": "Athlete"
+    },
+    {
+      "id": "8e72b308-806f-4354-9a0d-c389a55746ad",
+      "ticker": "mmadison",
+      "name": "Mikey Madison",
+      "category": "Film",
+      "priceUsd": 13.58,
+      "p0Usd": 0.1358,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/mmadison-4c418f7f5ab3.webp",
+      "industry": "Actor"
     },
     {
       "id": "29d479f1-b153-4878-b95c-a5a24727c3be",
@@ -2685,8 +2991,8 @@
       "ticker": "moistcr1tikal",
       "name": "MoistCr1TiKaL",
       "category": "YouTuber",
-      "priceUsd": 3.61,
-      "p0Usd": 0.0361,
+      "priceUsd": 11.5,
+      "p0Usd": 0.115,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -2765,8 +3071,8 @@
       "category": "Streamer",
       "priceUsd": 13.15,
       "p0Usd": 0.1315,
-      "holders": 1,
-      "volumeUsd": 5,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/nick-fuentes-5913b2abbc88.webp",
       "industry": "Commentator"
@@ -2801,7 +3107,7 @@
       "id": "b9e11220-32d4-47d4-862c-2661ea6ef899",
       "ticker": "deyzel",
       "name": "Noel Deyzel",
-      "category": "Bodybuilder",
+      "category": "Bodybuilding",
       "priceUsd": 1.22,
       "p0Usd": 0.012199999999999999,
       "holders": 0,
@@ -2853,7 +3159,7 @@
       "id": "8c1dbdbe-e4e2-476f-9407-be09965822c8",
       "ticker": "pimblett",
       "name": "Paddy Pimblett",
-      "category": "Mixed Martial Artist",
+      "category": "Mixed Martial Arts",
       "priceUsd": 13.42,
       "p0Usd": 0.13419999999999999,
       "holders": 0,
@@ -2869,8 +3175,8 @@
       "category": "Viral Personality",
       "priceUsd": 0.52,
       "p0Usd": 0.0052,
-      "holders": 1,
-      "volumeUsd": 5,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/palm-beach-pete-660178079a3c.webp",
       "industry": "Influencer"
@@ -2880,10 +3186,10 @@
       "ticker": "palmer-luckey",
       "name": "Palmer Luckey",
       "category": "Technology",
-      "priceUsd": 2.39,
-      "p0Usd": 0.0239,
-      "holders": 1,
-      "volumeUsd": 5,
+      "priceUsd": 11.85,
+      "p0Usd": 0.1185,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/palmer-luckey-8f92712076e9.webp",
       "industry": "Entrepreneur"
@@ -2913,6 +3219,19 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/pedri-9694f4618f7b.webp",
       "industry": "Athlete"
+    },
+    {
+      "id": "d55fd61f-356d-41ce-877f-ca6c15478f63",
+      "ticker": "pascal",
+      "name": "Pedro Pascal",
+      "category": "Film and Television",
+      "priceUsd": 26.03,
+      "p0Usd": 0.26030000000000003,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/pedro-pascal-03751c586a5d.webp",
+      "industry": "Actor"
     },
     {
       "id": "3e0d7d74-0a5c-4a62-89e6-1b27f3956b67",
@@ -2978,6 +3297,19 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/pokimane-b8946f04f2d7.webp",
       "industry": "Streamer"
+    },
+    {
+      "id": "2243a1cf-7646-44a8-85fe-90faf7275d52",
+      "ticker": "rzegler",
+      "name": "Rachel Zegler",
+      "category": "Actress",
+      "priceUsd": 16.34,
+      "p0Usd": 0.1634,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/rachel-zegler-a7908138ebb4.webp",
+      "industry": "Actor"
     },
     {
       "id": "b09b086e-1e9a-4a5f-8201-ee32851eb00a",
@@ -3087,7 +3419,7 @@
       "id": "1956a713-b437-40e9-9af8-9355c326a6c0",
       "ticker": "mahrez",
       "name": "Riyad Mahrez",
-      "category": "Footballer",
+      "category": "Soccer",
       "priceUsd": 11.69,
       "p0Usd": 0.11694,
       "holders": 0,
@@ -3108,6 +3440,19 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/robby-berger-cb983e4cf928.webp",
       "industry": "Podcaster"
+    },
+    {
+      "id": "a056554b-0557-4f02-b418-d9cfc93747ee",
+      "ticker": "rdj",
+      "name": "Robert Downey Jr.",
+      "category": "Film",
+      "priceUsd": 42.59,
+      "p0Usd": 0.42590000000000006,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/robert-downey-jr-735bcfb9a430.webp",
+      "industry": "Actor"
     },
     {
       "id": "36dfd654-a592-4738-9946-238007c65224",
@@ -3152,7 +3497,7 @@
       "id": "09ff405a-b4f0-4873-afba-9fd58f597ae1",
       "ticker": "ryan-garcia",
       "name": "Ryan Garcia",
-      "category": "Boxer",
+      "category": "Boxing",
       "priceUsd": 19.19,
       "p0Usd": 0.19190000000000002,
       "holders": 0,
@@ -3243,7 +3588,7 @@
       "id": "0d7d9348-8f18-4412-800e-5d9d29ea6901",
       "ticker": "smctominay",
       "name": "Scott McTominay",
-      "category": "Football",
+      "category": "Soccer",
       "priceUsd": 10.52,
       "p0Usd": 0.10518000000000001,
       "holders": 0,
@@ -3269,9 +3614,9 @@
       "id": "e0c9a1b6-0e3d-4b16-8d82-feb6825ed426",
       "ticker": "sean-strickland",
       "name": "Sean Strickland",
-      "category": "Mixed Martial Artist",
-      "priceUsd": 21.17,
-      "p0Usd": 0.21170000000000003,
+      "category": "Mixed Martial Arts",
+      "priceUsd": 15.09,
+      "p0Usd": 0.1509,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -3309,8 +3654,8 @@
       "ticker": "sketch",
       "name": "Sketch",
       "category": "Gamer",
-      "priceUsd": 4.2,
-      "p0Usd": 0.042,
+      "priceUsd": 6.9,
+      "p0Usd": 0.069,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -3363,8 +3708,8 @@
       "category": "Twitch",
       "priceUsd": 1.28,
       "p0Usd": 0.0128,
-      "holders": 1,
-      "volumeUsd": 5,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/stable-ronaldo-888d1e524081.webp",
       "industry": "Streamer"
@@ -3400,8 +3745,8 @@
       "ticker": "sydney-sweeney",
       "name": "Sydney Sweeney",
       "category": "Actress",
-      "priceUsd": 12.17,
-      "p0Usd": 0.1217,
+      "priceUsd": 27.83,
+      "p0Usd": 0.2783,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -3441,8 +3786,8 @@
       "category": "Singer-songwriter",
       "priceUsd": 46.31,
       "p0Usd": 0.4631,
-      "holders": 0,
-      "volumeUsd": 0,
+      "holders": 1,
+      "volumeUsd": 5,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/taylor-swift-6c78dff8b494.webp",
       "industry": "Musician"
@@ -3526,6 +3871,19 @@
       "industry": "Commentator"
     },
     {
+      "id": "0f8853b1-40cf-4773-b13c-9b51423c7e26",
+      "ticker": "chalamet",
+      "name": "Timothée Chalamet",
+      "category": "Film",
+      "priceUsd": 40.06,
+      "p0Usd": 0.4006,
+      "holders": 1,
+      "volumeUsd": 5,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/chalamet-a4e957f4f243.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "c895438f-cde2-4500-86bb-a58cdba78975",
       "ticker": "togi",
       "name": "Togi",
@@ -3537,6 +3895,32 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/togi-e8ec44192557.webp",
       "industry": "Influencer"
+    },
+    {
+      "id": "aec76861-e7a2-45ca-9f12-f5f0acca8bc0",
+      "ticker": "tcruise",
+      "name": "Tom Cruise",
+      "category": "Film",
+      "priceUsd": 35.18,
+      "p0Usd": 0.3518,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/tcruise-6e6c0b16293e.webp",
+      "industry": "Actor"
+    },
+    {
+      "id": "73028b4d-c5c2-40ea-b3a3-421c8d2020e3",
+      "ticker": "holland",
+      "name": "Tom Holland",
+      "category": "Film",
+      "priceUsd": 37.89,
+      "p0Usd": 0.3789,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/holland-05f169d1d4cb.webp",
+      "industry": "Actor"
     },
     {
       "id": "1e643706-a118-4d5e-8970-31b7102228c7",
@@ -3634,10 +4018,10 @@
       "ticker": "wembanyama",
       "name": "Victor Wembanyama",
       "category": "Basketball",
-      "priceUsd": 13.03,
-      "p0Usd": 0.1303,
-      "holders": 1,
-      "volumeUsd": 15,
+      "priceUsd": 28.13,
+      "p0Usd": 0.2813,
+      "holders": 0,
+      "volumeUsd": 0,
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/victor-wembanyama-ab73abff4b1a.webp",
       "industry": "Athlete"
@@ -3708,6 +4092,19 @@
       "industry": "Politician"
     },
     {
+      "id": "34bc21a1-2961-4f96-ac24-ba263948ddce",
+      "ticker": "wgoggins",
+      "name": "Walton Goggins",
+      "category": "Television",
+      "priceUsd": 24.12,
+      "p0Usd": 0.2412,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/walton-goggins-7412d825dfc0.webp",
+      "industry": "Actor"
+    },
+    {
       "id": "a7916045-9261-47b0-befb-aa962e27dd02",
       "ticker": "wmckennie",
       "name": "Weston McKennie",
@@ -3751,8 +4148,8 @@
       "ticker": "xqc",
       "name": "xQc",
       "category": "Variety Streamer",
-      "priceUsd": 3.27,
-      "p0Usd": 0.0327,
+      "priceUsd": 14.49,
+      "p0Usd": 0.1449,
       "holders": 0,
       "volumeUsd": 0,
       "frozen": false,
@@ -3771,6 +4168,19 @@
       "frozen": false,
       "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/yoane-wissa-4651c912b6a5.webp",
       "industry": "Athlete"
+    },
+    {
+      "id": "aad55374-dd65-48d9-a353-b33cef518d97",
+      "ticker": "zendaya",
+      "name": "Zendaya",
+      "category": "Actress",
+      "priceUsd": 36.14,
+      "p0Usd": 0.3614,
+      "holders": 0,
+      "volumeUsd": 0,
+      "frozen": false,
+      "photoUrl": "https://iawngxubkakulvrqvxal.supabase.co/storage/v1/object/public/profile-photos/zendaya-4e360d70553a.webp",
+      "industry": "Actor"
     },
     {
       "id": "8b08be91-7e49-4ddb-9275-b6eeba3e0844",

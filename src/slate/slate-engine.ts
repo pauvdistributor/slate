@@ -106,6 +106,14 @@ export interface Slate {
    * backward compatibility with persisted slates.
    */
   linkedLegs?: Record<string, LinkedSlateLeg>;
+  /**
+   * Every position id EVER opened as a slate leg (the member shorts of a
+   * person order). linkedLegs entries are deleted when a leg unwinds, but
+   * the txLog keeps its history — this registry lets reads tag those txs
+   * as slate flows forever. (Long legs need no entry: the pool buys under
+   * userId "slate-pool".) Optional for persisted slates from before it.
+   */
+  slateLegIds?: Record<string, true>;
   /** Slate value time series. */
   history: SlatePoint[];
   /** Internal sequence counter for history points. */
@@ -703,6 +711,8 @@ export interface InvestResult {
   /** Slate units minted to the investor from the slate leg. */
   units: number;
   allocations: InvestAllocation[];
+  /** Slate legs auto-closed because this buy liquidated their parents. */
+  cascadeClosures: CascadeClosure[];
   slateBefore: number;
   slateAfter: number;
 }
@@ -775,6 +785,10 @@ export function investInPerson(
     (slate.linkedLegs ??= {})[directPositionId] = { units: idx.units, cost: slateAmt };
   }
 
+  // The buys above can liquidate open shorts; auto-close the slate legs of
+  // any parent position those liquidations took out.
+  const cascadeClosures = sweepLiquidatedParents(slate);
+
   // Merge allocations: start from the slate leg, patch in the person's direct buy.
   const allocations: InvestAllocation[] = (idx?.allocations ?? slate.constituents.map((c) => ({
     id: c.id, name: c.name, amount: 0, primaryAmount: 0, slateAmount: 0,
@@ -793,8 +807,9 @@ export function investInPerson(
     };
   });
 
-  // If there was no slate leg (primaryPct=1) we still must record a tick.
-  const slateAfter = idx ? idx.slateAfter : recordTick(slate);
+  // If there was no slate leg (primaryPct=1) we still must record a tick;
+  // a cascade unwind moved the curves again, so it needs its own tick too.
+  const slateAfter = !idx || cascadeClosures.length > 0 ? recordTick(slate) : idx.slateAfter;
   const personSlateSlice = idx?.allocations.find((a) => a.id === personId)?.slateAmount ?? 0;
 
   return {
@@ -807,6 +822,7 @@ export function investInPerson(
     slateAmount: slateAmt,
     units: idx?.units ?? 0,
     allocations,
+    cascadeClosures,
     slateBefore,
     slateAfter,
   };
@@ -865,10 +881,14 @@ export interface PersonPricePoint {
 
 /**
  * The person's full price series: a launch point followed by one point per
- * transaction on their curve. Slate-pool legs are tagged "slate" so the UI
- * can distinguish direct orders from slate flows.
+ * transaction on their curve. Slate flows are tagged "slate" so the UI can
+ * distinguish them from direct orders: a long's leg trades as the pool
+ * (userId "slate-pool"); a short's leg opens member shorts under the
+ * INVESTOR's id, so those are recognized via the slate's leg registry —
+ * pass the slate to tag them.
  */
-export function personPriceHistory(c: Constituent): PersonPricePoint[] {
+export function personPriceHistory(c: Constituent, slate?: Slate): PersonPricePoint[] {
+  const legIds = slate?.slateLegIds ?? {};
   const log = c.market.txLog;
   const points: PersonPricePoint[] = [{
     seq: 0,
@@ -886,7 +906,7 @@ export function personPriceHistory(c: Constituent): PersonPricePoint[] {
       event: tx.type,
       source:
         tx.type === "liquidation" ? "liquidation"
-        : tx.userId === "slate-pool" ? "slate"
+        : tx.userId === "slate-pool" || legIds[tx.positionId] ? "slate"
         : "order",
       userId: tx.userId,
       amount: tx.amountIn > 0 ? tx.amountIn : tx.amountOut,
@@ -923,6 +943,8 @@ export interface PersonTradeResult {
   slateAmount: number;
   /** How many member shorts the slate leg opened. */
   slateShortCount: number;
+  /** Slate legs auto-closed for parents found liquidated (healing sweep). */
+  cascadeClosures: CascadeClosure[];
   slateBefore: number;
   slateAfter: number;
 }
@@ -983,6 +1005,13 @@ export function shortPerson(
   if (directId && slateShorts.length > 0) {
     (slate.linkedLegs ??= {})[directId] = { shorts: slateShorts };
   }
+  // Registered durably (the link above dies with the unwind) so the txLog
+  // history of these legs stays taggable as slate flows.
+  for (const s of slateShorts) (slate.slateLegIds ??= {})[s.positionId] = true;
+
+  // Opening shorts moves prices down so it cannot liquidate anything itself,
+  // but sweeping here heals orphans a persisted slate may carry from before.
+  const cascadeClosures = sweepLiquidatedParents(slate);
 
   const slateAfter = recordTick(slate);
   return {
@@ -995,6 +1024,7 @@ export function shortPerson(
     primaryPct,
     slateAmount: slateAmt,
     slateShortCount: slateShorts.length,
+    cascadeClosures,
     slateBefore,
     slateAfter,
   };
@@ -1014,10 +1044,144 @@ export interface ClosePositionResult {
   closedSlateLegs: number;
   /** Linked legs that could not be closed right now (left open, still linked). */
   failedSlateLegs: number;
+  /** Slate legs auto-closed because this close liquidated their parents. */
+  cascadeClosures: CascadeClosure[];
   priceBefore: number;
   priceAfter: number;
   slateBefore: number;
   slateAfter: number;
+}
+
+/**
+ * A slate leg auto-closed because its PARENT direct position was liquidated.
+ * The liquidation deleted the parent inside the market walk without going
+ * through closePersonPosition, so the engine unwinds the orphaned leg itself
+ * and reports the cash here for the caller to credit the owner's balance.
+ */
+export interface CascadeClosure {
+  /** The liquidated parent direct position. */
+  parentPositionId: string;
+  /** Person whose curve carried the parent. */
+  personId: string;
+  /** Owner of the parent (and of the unwound slate leg). */
+  userId: string;
+  /** Cash returned to the owner by the unwind. */
+  proceeds: number;
+  /** Slate legs closed (units sale counts as one). */
+  closedSlateLegs: number;
+  /** Legs that could not close right now — they stay open and linked for retry. */
+  failedSlateLegs: number;
+}
+
+/**
+ * Unwind the slate leg linked to `parentId` for `owner`: sell minted units
+ * back / buy back the spread member shorts. Legs that cannot close right now
+ * stay linked so a later unwind can retry them. Shared by the explicit close
+ * (closePersonPosition) and the liquidation cascade (sweepLiquidatedParents).
+ */
+function unwindLinkedLeg(
+  slate: Slate,
+  parentId: string,
+  owner: string,
+): { proceeds: number; closed: number; failed: number } {
+  let proceeds = 0;
+  let closed = 0;
+  let failed = 0;
+  const link = slate.linkedLegs?.[parentId];
+  if (!link) return { proceeds, closed, failed };
+  const remaining: LinkedSlateLeg = {};
+
+  if (link.units && link.units > 0) {
+    const held = slate.ledger.holders[owner] ?? 0;
+    const u = Math.min(link.units, held);
+    if (u > 0) {
+      try {
+        const r = sellSlateUnits(slate, owner, u);
+        proceeds += r.cashOut;
+        closed += 1;
+        if (link.units - u > 1e-9) {
+          remaining.units = link.units - u;
+          if (link.cost != null) remaining.cost = link.cost * ((link.units - u) / link.units);
+        }
+      } catch {
+        failed += 1;
+        remaining.units = link.units;
+        remaining.cost = link.cost;
+      }
+    }
+    // Units already redeemed elsewhere → nothing left to unwind.
+  }
+
+  for (const s of link.shorts ?? []) {
+    const c = getConstituent(slate, s.constituentId);
+    const p = c?.market.positions[s.positionId];
+    if (!c || !p) continue; // already closed or liquidated
+    try {
+      const r = shortClose(c.market, c.config, s.positionId);
+      c.market = r.state;
+      proceeds += r.netReturn;
+      closed += 1;
+    } catch {
+      failed += 1;
+      (remaining.shorts ??= []).push(s);
+    }
+  }
+
+  if (remaining.units || remaining.shorts?.length) {
+    slate.linkedLegs![parentId] = remaining;
+  } else {
+    delete slate.linkedLegs![parentId];
+  }
+  return { proceeds, closed, failed };
+}
+
+/** The liquidation tx that killed `positionId`, if that's how it died. */
+function findLiquidationTx(c: Constituent, positionId: string) {
+  const log = c.market.txLog;
+  for (let i = log.length - 1; i >= 0; i--) {
+    const tx = log[i];
+    if (tx.positionId === positionId && tx.type === "liquidation") return tx;
+  }
+  return null;
+}
+
+/**
+ * Auto-close slate legs whose parent direct position was LIQUIDATED. Normal
+ * closes go through closePersonPosition, which unwinds the leg and removes
+ * the link; a liquidation deletes the parent mid-walk without that hook, so
+ * any link whose parent is gone — confirmed by the liquidation tx on its
+ * curve, which also names the owner — gets its leg unwound here. Buying back
+ * a member short can itself liquidate further parents, so we loop until no
+ * new orphan appears. Does not record a tick; callers fold it into theirs.
+ */
+function sweepLiquidatedParents(slate: Slate): CascadeClosure[] {
+  const out: CascadeClosure[] = [];
+  const attempted = new Set<string>();
+  for (;;) {
+    let orphan: { parentId: string; personId: string; userId: string } | null = null;
+    for (const parentId of Object.keys(slate.linkedLegs ?? {})) {
+      if (attempted.has(parentId)) continue;
+      if (slate.constituents.some((c) => c.market.positions[parentId])) continue; // parent still open
+      attempted.add(parentId);
+      for (const c of slate.constituents) {
+        const tx = findLiquidationTx(c, parentId);
+        if (tx) { orphan = { parentId, personId: c.id, userId: tx.userId }; break; }
+      }
+      // No liquidation tx (e.g. the person was removed from the slate with the
+      // position) → leave the link alone rather than guess an owner.
+      if (orphan) break;
+    }
+    if (!orphan) return out;
+    const r = unwindLinkedLeg(slate, orphan.parentId, orphan.userId);
+    out.push({
+      parentPositionId: orphan.parentId,
+      personId: orphan.personId,
+      userId: orphan.userId,
+      proceeds: r.proceeds,
+      closedSlateLegs: r.closed,
+      failedSlateLegs: r.failed,
+    });
+  }
 }
 
 /**
@@ -1056,55 +1220,11 @@ export function closePersonPosition(
   }
 
   // Unwind the linked slate leg.
-  let slateProceeds = 0;
-  let closedSlateLegs = 0;
-  let failedSlateLegs = 0;
-  const link = slate.linkedLegs?.[positionId];
-  if (link) {
-    const remaining: LinkedSlateLeg = {};
+  const unwound = unwindLinkedLeg(slate, positionId, owner);
 
-    if (link.units && link.units > 0) {
-      const held = slate.ledger.holders[owner] ?? 0;
-      const u = Math.min(link.units, held);
-      if (u > 0) {
-        try {
-          const r = sellSlateUnits(slate, owner, u);
-          slateProceeds += r.cashOut;
-          closedSlateLegs += 1;
-          if (link.units - u > 1e-9) {
-            remaining.units = link.units - u;
-            if (link.cost != null) remaining.cost = link.cost * ((link.units - u) / link.units);
-          }
-        } catch {
-          failedSlateLegs += 1;
-          remaining.units = link.units;
-          remaining.cost = link.cost;
-        }
-      }
-      // Units already redeemed elsewhere → nothing left to unwind.
-    }
-
-    for (const s of link.shorts ?? []) {
-      const c = getConstituent(slate, s.constituentId);
-      const p = c?.market.positions[s.positionId];
-      if (!c || !p) continue; // already closed or liquidated
-      try {
-        const r = shortClose(c.market, c.config, s.positionId);
-        c.market = r.state;
-        slateProceeds += r.netReturn;
-        closedSlateLegs += 1;
-      } catch {
-        failedSlateLegs += 1;
-        (remaining.shorts ??= []).push(s);
-      }
-    }
-
-    if (remaining.units || remaining.shorts?.length) {
-      slate.linkedLegs![positionId] = remaining;
-    } else {
-      delete slate.linkedLegs![positionId];
-    }
-  }
+  // Buying back shorts (direct or member legs) can liquidate OTHER parents;
+  // auto-close the slate legs those liquidations orphaned.
+  const cascadeClosures = sweepLiquidatedParents(slate);
 
   const priceAfter = constituentPrice(person);
   const slateAfter = recordTick(slate);
@@ -1113,11 +1233,12 @@ export function closePersonPosition(
     slate,
     personId,
     positionId,
-    proceeds: directProceeds + slateProceeds,
+    proceeds: directProceeds + unwound.proceeds,
     directProceeds,
-    slateProceeds,
-    closedSlateLegs,
-    failedSlateLegs,
+    slateProceeds: unwound.proceeds,
+    closedSlateLegs: unwound.closed,
+    failedSlateLegs: unwound.failed,
+    cascadeClosures,
     priceBefore,
     priceAfter,
     slateBefore,
